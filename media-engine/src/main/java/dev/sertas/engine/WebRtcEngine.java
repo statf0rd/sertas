@@ -10,6 +10,8 @@ import dev.onvoid.webrtc.media.audio.AudioOptions;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.AudioTrackSource;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
+import dev.onvoid.webrtc.media.video.VideoTrack;
+import dev.onvoid.webrtc.media.video.VideoTrackSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +64,11 @@ public final class WebRtcEngine {
         options.autoGainControl = true;
         options.highpassFilter = true;
         return createMicTrack(options);
+    }
+
+    /** Видео-трек из любого источника (камера, экран, кастомный push-источник). */
+    public VideoTrack createVideoTrack(String label, VideoTrackSource source) {
+        return factory.createVideoTrack(label, source);
     }
 
     /** Дефолтная конфигурация: публичный STUN Google для NAT-traversal. */
