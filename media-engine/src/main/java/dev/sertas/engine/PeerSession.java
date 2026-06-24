@@ -37,6 +37,9 @@ public final class PeerSession {
 
         /** Удалённый пир открыл data-channel. */
         default void onDataChannel(RTCDataChannel channel) {}
+
+        /** Ошибка в асинхронном шаге. Никогда не бросается в нативный код. */
+        default void onError(Throwable error) {}
     }
 
     private final RTCPeerConnection pc;
@@ -59,17 +62,17 @@ public final class PeerSession {
         this.pc = engine.createPeerConnection(new PeerConnectionObserver() {
             @Override
             public void onIceCandidate(RTCIceCandidate candidate) {
-                signals.onLocalIceCandidate(candidate);
+                safe(() -> signals.onLocalIceCandidate(candidate));
             }
 
             @Override
             public void onConnectionChange(RTCPeerConnectionState state) {
-                signals.onConnectionState(state);
+                safe(() -> signals.onConnectionState(state));
             }
 
             @Override
             public void onDataChannel(RTCDataChannel channel) {
-                signals.onDataChannel(channel);
+                safe(() -> signals.onDataChannel(channel));
             }
         });
     }
@@ -87,12 +90,12 @@ public final class PeerSession {
         pc.createOffer(new RTCOfferOptions(), new CreateSessionDescriptionObserver() {
             @Override
             public void onSuccess(RTCSessionDescription description) {
-                applyAndSignalLocal(description);
+                safe(() -> applyAndSignalLocal(description));
             }
 
             @Override
             public void onFailure(String error) {
-                throw new IllegalStateException("createOffer failed: " + error);
+                signals.onError(new IllegalStateException("createOffer failed: " + error));
             }
         });
     }
@@ -102,15 +105,17 @@ public final class PeerSession {
         pc.setRemoteDescription(description, new SetSessionDescriptionObserver() {
             @Override
             public void onSuccess() {
-                flushPendingCandidates();
-                if (description.sdpType == RTCSdpType.OFFER) {
-                    createAnswer();
-                }
+                safe(() -> {
+                    flushPendingCandidates();
+                    if (description.sdpType == RTCSdpType.OFFER) {
+                        createAnswer();
+                    }
+                });
             }
 
             @Override
             public void onFailure(String error) {
-                throw new IllegalStateException("setRemoteDescription failed: " + error);
+                signals.onError(new IllegalStateException("setRemoteDescription failed: " + error));
             }
         });
     }
@@ -123,7 +128,7 @@ public final class PeerSession {
                 return;
             }
         }
-        pc.addIceCandidate(candidate);
+        safe(() -> pc.addIceCandidate(candidate));
     }
 
     public void close() {
@@ -134,12 +139,12 @@ public final class PeerSession {
         pc.createAnswer(new RTCAnswerOptions(), new CreateSessionDescriptionObserver() {
             @Override
             public void onSuccess(RTCSessionDescription description) {
-                applyAndSignalLocal(description);
+                safe(() -> applyAndSignalLocal(description));
             }
 
             @Override
             public void onFailure(String error) {
-                throw new IllegalStateException("createAnswer failed: " + error);
+                signals.onError(new IllegalStateException("createAnswer failed: " + error));
             }
         });
     }
@@ -152,12 +157,12 @@ public final class PeerSession {
         pc.setLocalDescription(local, new SetSessionDescriptionObserver() {
             @Override
             public void onSuccess() {
-                signals.onLocalDescription(local);
+                safe(() -> signals.onLocalDescription(local));
             }
 
             @Override
             public void onFailure(String error) {
-                throw new IllegalStateException("setLocalDescription failed: " + error);
+                signals.onError(new IllegalStateException("setLocalDescription failed: " + error));
             }
         });
     }
@@ -171,6 +176,15 @@ public final class PeerSession {
         }
         for (RTCIceCandidate c : toAdd) {
             pc.addIceCandidate(c);
+        }
+    }
+
+    /** Выполнить шаг, не давая исключению уйти в нативный код (иначе краш JVM). */
+    private void safe(Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException e) {
+            signals.onError(e);
         }
     }
 }

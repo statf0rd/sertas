@@ -30,4 +30,7 @@ dependencies {
     implementation(project(":protocol"))
     implementation(project(":signaling-client"))
     implementation(project(":media"))
+
+    // Полный интеграционный тест поднимает реальный сигналинг-сервер.
+    testImplementation(project(":signaling-server"))
 }
