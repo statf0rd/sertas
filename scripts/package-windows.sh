@@ -41,12 +41,14 @@ INNER=$(ls -d /tmp/jre-win-extract/*/ | head -1)
 cp -R "$INNER"* "$STAGE/jre/"
 
 echo "[5/5] launcher + zip"
-cat > "$STAGE/Запустить sertas.bat" <<'BAT'
+# Адрес сервера в бандле берётся из SERTAS_SERVER (не хардкод в репозитории).
+SERVER_URL="${SERTAS_SERVER:-ws://localhost:8080/signal}"
+cat > "$STAGE/Запустить sertas.bat" <<BAT
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
 echo Запуск sertas... (первый старт может занять 10-20 секунд)
-"jre\bin\java.exe" -cp "lib\*" dev.sertas.app.Launcher
+"jre\\bin\\java.exe" -Dsertas.server=$SERVER_URL -cp "lib\\*" dev.sertas.app.Launcher
 echo.
 echo ---- Если выше есть ошибка - пришлите скриншот этого окна. ----
 pause
