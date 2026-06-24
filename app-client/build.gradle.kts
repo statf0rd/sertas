@@ -16,4 +16,5 @@ dependencies {
     implementation(project(":protocol"))
     implementation(project(":signaling-client"))
     implementation(project(":media"))
+    implementation(project(":media-engine"))
 }

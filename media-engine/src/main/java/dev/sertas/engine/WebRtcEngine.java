@@ -6,6 +6,9 @@ import dev.onvoid.webrtc.RTCConfiguration;
 import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase;
+import dev.onvoid.webrtc.media.audio.AudioOptions;
+import dev.onvoid.webrtc.media.audio.AudioTrack;
+import dev.onvoid.webrtc.media.audio.AudioTrackSource;
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule;
 
 import java.util.ArrayList;
@@ -40,6 +43,25 @@ public final class WebRtcEngine {
 
     public RTCPeerConnection createPeerConnection(PeerConnectionObserver observer) {
         return factory.createPeerConnection(defaultConfig(), observer);
+    }
+
+    /**
+     * Локальный трек микрофона. {@code options} включают голосовой DSP
+     * (эхоподавление/шумодав/AGC) — переключаемый в Фазе 4. По умолчанию всё
+     * включено для чистого голоса в комнате с открытыми колонками.
+     */
+    public AudioTrack createMicTrack(AudioOptions options) {
+        AudioTrackSource source = factory.createAudioSource(options);
+        return factory.createAudioTrack("mic", source);
+    }
+
+    public AudioTrack createMicTrack() {
+        AudioOptions options = new AudioOptions();
+        options.echoCancellation = true;
+        options.noiseSuppression = true;
+        options.autoGainControl = true;
+        options.highpassFilter = true;
+        return createMicTrack(options);
     }
 
     /** Дефолтная конфигурация: публичный STUN Google для NAT-traversal. */

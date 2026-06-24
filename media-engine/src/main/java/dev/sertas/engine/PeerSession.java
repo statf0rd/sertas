@@ -12,6 +12,7 @@ import dev.onvoid.webrtc.RTCPeerConnectionState;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.SetSessionDescriptionObserver;
+import dev.onvoid.webrtc.media.MediaStreamTrack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,6 +85,13 @@ public final class PeerSession {
     public RTCDataChannel createDataChannel(String label) {
         return pc.createDataChannel(label, new RTCDataChannelInit());
     }
+
+    /** Локальный медиа-трек (микрофон/камера/экран) в этот peer-connection. */
+    public void addTrack(MediaStreamTrack track) {
+        pc.addTrack(track, List.of(STREAM_ID));
+    }
+
+    private static final String STREAM_ID = "sertas";
 
     /** Инициировать соединение: создать offer, установить локально, отдать наружу. */
     public void createOffer() {

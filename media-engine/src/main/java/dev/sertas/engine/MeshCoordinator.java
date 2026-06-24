@@ -4,6 +4,7 @@ import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
+import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.sertas.protocol.Peer;
 import dev.sertas.protocol.SignalMessage;
 import dev.sertas.protocol.SignalMessage.Answer;
@@ -17,6 +18,7 @@ import dev.sertas.protocol.SignalMessage.TrackMeta;
 import dev.sertas.signaling.client.SignalingClient;
 import dev.sertas.signaling.client.SignalingListener;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -32,6 +34,7 @@ public final class MeshCoordinator implements SignalingListener {
     private final MeshListener listener;
     private final SignalingClient signaling = new SignalingClient(this);
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
+    private final List<MediaStreamTrack> localTracks = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private volatile String room;
     private volatile String name;
@@ -40,6 +43,15 @@ public final class MeshCoordinator implements SignalingListener {
     public MeshCoordinator(WebRtcEngine engine, MeshListener listener) {
         this.engine = engine;
         this.listener = listener;
+    }
+
+    /**
+     * Зарегистрировать локальный трек (микрофон/камера/экран), который будет
+     * добавлен в каждую peer-сессию. Вызывать ДО {@link #start} — текущая
+     * версия не делает renegotiation для уже подключённых пиров.
+     */
+    public void addLocalTrack(MediaStreamTrack track) {
+        localTracks.add(track);
     }
 
     /** Подключиться к сигналинг-серверу и войти в комнату. */
@@ -123,7 +135,7 @@ public final class MeshCoordinator implements SignalingListener {
     }
 
     private PeerSession newSession(String peerId) {
-        return new PeerSession(engine, new PeerSession.Signals() {
+        PeerSession session = new PeerSession(engine, new PeerSession.Signals() {
             @Override
             public void onLocalDescription(RTCSessionDescription d) {
                 if (d.sdpType == RTCSdpType.OFFER) {
@@ -153,5 +165,9 @@ public final class MeshCoordinator implements SignalingListener {
                 listener.onError(error);
             }
         });
+        for (MediaStreamTrack track : localTracks) {
+            session.addTrack(track);
+        }
+        return session;
     }
 }
