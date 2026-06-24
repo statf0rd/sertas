@@ -1,0 +1,42 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Java
+*.class
+hs_err_pid*
+replay_pid*
+
+# Native build artifacts
+native-capture/**/build/
+native-capture/**/*.dylib
+native-capture/**/*.dll
+native-capture/**/*.so
+native-capture/**/DerivedData/
+
+# Packaging
+*.dmg
+*.pkg
+*.msi
+*.exe
+out/
+dist/
+
+# Logs / local
+*.log
+local.properties
