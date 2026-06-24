@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -38,10 +39,16 @@ class SignalingEndToEndTest {
 
     static final class Collector implements SignalingListener {
         final BlockingQueue<SignalMessage> q = new LinkedBlockingQueue<>();
+        final CountDownLatch closed = new CountDownLatch(1);
 
         @Override
         public void onMessage(SignalMessage m) {
             q.add(m);
+        }
+
+        @Override
+        public void onClose(int code, String reason) {
+            closed.countDown();
         }
 
         SignalMessage take() throws InterruptedException {
@@ -82,5 +89,31 @@ class SignalingEndToEndTest {
 
         alice.close();
         bob.close();
+    }
+
+    @Test
+    void rejectsConnectionWithoutValidToken() throws Exception {
+        SignalingServer secured = new SignalingServer().requireToken("s3cret");
+        secured.start(0);
+        String secureUrl = "ws://localhost:" + secured.port() + "/signal";
+        try {
+            // без токена — соединение закрывается, RoomState не приходит
+            var noToken = new Collector();
+            var c1 = new SignalingClient(noToken);
+            c1.connect(secureUrl).get(5, TimeUnit.SECONDS);
+            c1.send(new Join("ROOM", "X"));
+            assertTrue(noToken.closed.await(5, TimeUnit.SECONDS), "соединение без токена должно закрыться");
+            assertNull(noToken.q.poll(1, TimeUnit.SECONDS), "без токена не должно быть RoomState");
+
+            // с правильным токеном — работает
+            var withToken = new Collector();
+            var c2 = new SignalingClient(withToken);
+            c2.connect(secureUrl + "?token=s3cret").get(5, TimeUnit.SECONDS);
+            c2.send(new Join("ROOM", "Y"));
+            assertInstanceOf(RoomState.class, withToken.take());
+            c2.close();
+        } finally {
+            secured.stop();
+        }
     }
 }

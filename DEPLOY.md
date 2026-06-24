@@ -47,6 +47,9 @@ After=network.target
 [Service]
 Type=simple
 Environment=JAVA_HOME=/opt/java21
+# Токен доступа: подключения без совпадающего ?token=... отклоняются.
+# Сгенерировать: openssl rand -hex 16. Без этой строки сервер пускает всех.
+Environment=SERTAS_TOKEN=ВАШ_ТОКЕН
 ExecStart=/opt/sertas-signaling/bin/signaling-server 8080
 Restart=always
 RestartSec=3
@@ -77,15 +80,25 @@ journalctl -u sertas-signaling -f      # живые логи
 
 ## Указать сервер в приложении
 
-URL не хранится в коде. Задайте один из источников (см. README):
-`-Dsertas.server=ws://HOST:8080/signal`, env `SERTAS_SERVER`, или файл
-`~/.sertas/server`.
+URL не хранится в коде. Задайте один из источников (см. README). Если на сервере
+включён `SERTAS_TOKEN`, добавьте токен в URL как query-параметр:
 
-## Безопасность (что усилить)
+```
+ws://HOST:8080/signal?token=ВАШ_ТОКЕН
+```
 
-- Сервер **без аутентификации** и на **plain WS** (не WSS). Кто угодно, зная код
-  комнаты, может войти. Медиа при этом всегда шифруется (DTLS), но сам сигналинг
-  идёт без TLS.
-- Усиление: общий секрет/токен при `join`; **WSS** (домен + Let's Encrypt +
-  reverse-proxy nginx/caddy); при необходимости — TURN-сервер (coturn) для
-  надёжного NAT-traversal между удалёнными участниками.
+Источники (в порядке приоритета): `-Dsertas.server=...`, env `SERTAS_SERVER`,
+файл `~/.sertas/server`.
+
+## Безопасность
+
+- **Токен доступа (реализовано):** при заданном `SERTAS_TOKEN` сервер отклоняет
+  подключения без совпадающего `?token=`. Токен едет в URL, в коде/репозитории
+  его нет.
+- **Шифрование:** медиа всегда шифруется (DTLS-SRTP). Сам сигналинг по умолчанию
+  идёт по **plain WS** (не WSS). Для TLS нужен домен: указать его на IP VPS,
+  поставить reverse-proxy (Caddy/nginx) с Let's Encrypt и проксировать на
+  `localhost:8080`, в приложении использовать `wss://домен/signal?token=...`.
+  (Для bare-IP без домена корректный публичный TLS-сертификат не выдаётся.)
+- **NAT:** если удалённые участники не соединяются (статус застревает на
+  «соединение…») — поднять TURN-сервер (coturn) на этом же VPS.

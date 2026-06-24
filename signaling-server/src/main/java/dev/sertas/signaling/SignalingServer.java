@@ -19,9 +19,26 @@ public final class SignalingServer {
     private final Map<String, WsContext> conns = new ConcurrentHashMap<>();
     private Javalin app;
 
+    /**
+     * Если задан — подключения без совпадающего {@code ?token=} отклоняются.
+     * По умолчанию берётся из переменной окружения {@code SERTAS_TOKEN};
+     * {@code null} = без авторизации (для локальной разработки).
+     */
+    private String requiredToken = System.getenv("SERTAS_TOKEN");
+
+    /** Задать обязательный токен программно (например, в тестах). */
+    public SignalingServer requireToken(String token) {
+        this.requiredToken = token;
+        return this;
+    }
+
     public void start(int port) {
         app = Javalin.create().ws("/signal", ws -> {
             ws.onConnect(ctx -> {
+                if (requiredToken != null && !requiredToken.equals(ctx.queryParam("token"))) {
+                    ctx.closeSession(1008, "unauthorized"); // 1008 = policy violation
+                    return;
+                }
                 ctx.enableAutomaticPings();
                 conns.put(ctx.sessionId(), ctx);
             });
