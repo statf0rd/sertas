@@ -3,6 +3,7 @@ package dev.sertas.engine;
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCConfiguration;
+import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase;
 import dev.onvoid.webrtc.media.audio.AudioOptions;
@@ -13,6 +14,7 @@ import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.onvoid.webrtc.media.video.VideoTrackSource;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Владелец единственного {@link PeerConnectionFactory} на приложение. Создаёт
@@ -42,7 +44,19 @@ public final class WebRtcEngine {
     }
 
     public RTCPeerConnection createPeerConnection(PeerConnectionObserver observer) {
-        return factory.createPeerConnection(defaultConfig(), observer);
+        return createPeerConnection(observer, null);
+    }
+
+    /** Peer-connection с заданными ICE-серверами (от сервера); null/пусто → дефолт. */
+    public RTCPeerConnection createPeerConnection(PeerConnectionObserver observer, List<RTCIceServer> iceServers) {
+        RTCConfiguration cfg;
+        if (iceServers == null || iceServers.isEmpty()) {
+            cfg = defaultConfig();
+        } else {
+            cfg = new RTCConfiguration();
+            cfg.iceServers = new ArrayList<>(iceServers);
+        }
+        return factory.createPeerConnection(cfg, observer);
     }
 
     /**

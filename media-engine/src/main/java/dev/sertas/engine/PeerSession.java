@@ -6,6 +6,7 @@ import dev.onvoid.webrtc.RTCAnswerOptions;
 import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCDataChannelInit;
 import dev.onvoid.webrtc.RTCIceCandidate;
+import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCOfferOptions;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
@@ -20,7 +21,6 @@ import dev.onvoid.webrtc.media.MediaStreamTrack;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.UnaryOperator;
 
 /**
  * Один {@link RTCPeerConnection} к одному удалённому пиру в P2P-меше. Прячет
@@ -53,20 +53,17 @@ public final class PeerSession {
     private final RTCPeerConnection pc;
     private final Signals signals;
 
-    /** Хук преобразования локального SDP перед отправкой (SDP-munging). По умолчанию — без изменений. */
-    private final UnaryOperator<String> localSdpTransform;
-
     private final Object lock = new Object();
     private final List<RTCIceCandidate> pendingRemote = new ArrayList<>();
     private boolean remoteDescriptionSet = false;
 
     public PeerSession(WebRtcEngine engine, Signals signals) {
-        this(engine, signals, UnaryOperator.identity());
+        this(engine, signals, (List<RTCIceServer>) null);
     }
 
-    public PeerSession(WebRtcEngine engine, Signals signals, UnaryOperator<String> localSdpTransform) {
+    /** @param iceServers ICE-серверы от сервера; null/пусто → дефолт движка. */
+    public PeerSession(WebRtcEngine engine, Signals signals, List<RTCIceServer> iceServers) {
         this.signals = signals;
-        this.localSdpTransform = localSdpTransform;
         this.pc = engine.createPeerConnection(new PeerConnectionObserver() {
             @Override
             public void onIceCandidate(RTCIceCandidate candidate) {
@@ -87,7 +84,7 @@ public final class PeerSession {
             public void onTrack(RTCRtpTransceiver transceiver) {
                 safe(() -> signals.onTrack(transceiver));
             }
-        });
+        }, iceServers);
     }
 
     public RTCPeerConnection peerConnection() {
@@ -184,14 +181,10 @@ public final class PeerSession {
     }
 
     private void applyAndSignalLocal(RTCSessionDescription description) {
-        String munged = localSdpTransform.apply(description.sdp);
-        RTCSessionDescription local = munged.equals(description.sdp)
-                ? description
-                : new RTCSessionDescription(description.sdpType, munged);
-        pc.setLocalDescription(local, new SetSessionDescriptionObserver() {
+        pc.setLocalDescription(description, new SetSessionDescriptionObserver() {
             @Override
             public void onSuccess() {
-                safe(() -> signals.onLocalDescription(local));
+                safe(() -> signals.onLocalDescription(description));
             }
 
             @Override

@@ -1,5 +1,6 @@
 package dev.sertas.signaling;
 
+import dev.sertas.protocol.IceServer;
 import dev.sertas.protocol.Peer;
 import dev.sertas.protocol.SignalMessage;
 import dev.sertas.protocol.SignalMessage.Answer;
@@ -22,13 +23,23 @@ import java.util.List;
 public final class SignalingService {
 
     private final RoomRegistry registry = new RoomRegistry();
+    private final List<IceServer> iceServers;
+
+    public SignalingService() {
+        this(List.of());
+    }
+
+    /** ICE-серверы (STUN/TURN) отдаются клиентам в RoomState. */
+    public SignalingService(List<IceServer> iceServers) {
+        this.iceServers = List.copyOf(iceServers);
+    }
 
     public List<Outbound> onMessage(String connId, SignalMessage msg) {
         List<Outbound> out = new ArrayList<>();
         if (msg instanceof Join j) {
             registry.join(connId, j.name(), j.room());
             List<Peer> peers = registry.peersInRoom(j.room(), connId);
-            out.add(new Outbound(connId, new RoomState(connId, peers)));
+            out.add(new Outbound(connId, new RoomState(connId, peers, iceServers)));
             for (Peer p : peers) {
                 out.add(new Outbound(p.id(), new PeerJoined(connId, j.name())));
             }

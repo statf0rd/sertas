@@ -20,7 +20,8 @@ class SignalCodecTest {
 
     @Test
     void roundTripRoomState() {
-        var msg = new SignalMessage.RoomState("id-1", List.of(new Peer("id-2", "Bob")));
+        var msg = new SignalMessage.RoomState("id-1", List.of(new Peer("id-2", "Bob")),
+                List.of(new IceServer(List.of("stun:s:3478"), null, null)));
         assertEquals(msg, codec.decode(codec.encode(msg)));
     }
 

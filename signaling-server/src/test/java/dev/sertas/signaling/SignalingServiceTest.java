@@ -25,7 +25,7 @@ class SignalingServiceTest {
         svc.onMessage("a", new Join("ROOM", "Alice"));   // первый — пиров нет
         List<Outbound> out = svc.onMessage("b", new Join("ROOM", "Bob"));
         assertTrue(out.contains(new Outbound("b",
-                new RoomState("b", List.of(new Peer("a", "Alice"))))), out.toString());
+                new RoomState("b", List.of(new Peer("a", "Alice")), List.of()))), out.toString());
         assertTrue(out.contains(new Outbound("a", new PeerJoined("b", "Bob"))), out.toString());
     }
 
@@ -33,7 +33,7 @@ class SignalingServiceTest {
     void firstJoinGetsEmptyRoomStateAndNoBroadcast() {
         var svc = new SignalingService();
         List<Outbound> out = svc.onMessage("a", new Join("ROOM", "Alice"));
-        assertEquals(List.of(new Outbound("a", new RoomState("a", List.of()))), out);
+        assertEquals(List.of(new Outbound("a", new RoomState("a", List.of(), List.of()))), out);
     }
 
     @Test

@@ -1,10 +1,12 @@
 package dev.sertas.signaling;
 
+import dev.sertas.protocol.IceServer;
 import dev.sertas.protocol.SignalCodec;
 import dev.sertas.protocol.SignalMessage;
 import io.javalin.Javalin;
 import io.javalin.websocket.WsContext;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,7 +18,7 @@ import java.util.concurrent.TimeUnit;
  */
 public final class SignalingServer {
 
-    private final SignalingService service = new SignalingService();
+    private final SignalingService service = new SignalingService(iceServersFromEnv());
     private final SignalCodec codec = new SignalCodec();
     private final Map<String, WsContext> conns = new ConcurrentHashMap<>();
     private Javalin app;
@@ -77,6 +79,25 @@ public final class SignalingServer {
                 // соединение закрылось между проверкой и отправкой
             }
         }
+    }
+
+    /**
+     * ICE-серверы для раздачи клиентам: STUN всегда; TURN из env {@code SERTAS_TURN}
+     * (формат {@code turn:HOST:3478,USER,PASS}), как UDP+TCP. Креды только здесь.
+     */
+    private static List<IceServer> iceServersFromEnv() {
+        List<IceServer> servers = new ArrayList<>();
+        servers.add(new IceServer(List.of("stun:stun.l.google.com:19302"), null, null));
+        String turn = System.getenv("SERTAS_TURN");
+        if (turn != null && !turn.isBlank()) {
+            String[] p = turn.trim().split("[,\\s]+");
+            if (p.length >= 3) {
+                String url = p[0];
+                String tcp = url.contains("?") ? url : url + "?transport=tcp";
+                servers.add(new IceServer(List.of(url, tcp), p[1], p[2]));
+            }
+        }
+        return servers;
     }
 
     public int port() {

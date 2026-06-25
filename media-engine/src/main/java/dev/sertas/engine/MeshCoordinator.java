@@ -2,10 +2,12 @@ package dev.sertas.engine;
 
 import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCIceCandidate;
+import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
+import dev.sertas.protocol.IceServer;
 import dev.sertas.protocol.Peer;
 import dev.sertas.protocol.SignalMessage;
 import dev.sertas.protocol.SignalMessage.Answer;
@@ -19,6 +21,7 @@ import dev.sertas.protocol.SignalMessage.TrackMeta;
 import dev.sertas.signaling.client.SignalingClient;
 import dev.sertas.signaling.client.SignalingListener;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,6 +43,8 @@ public final class MeshCoordinator implements SignalingListener {
     private volatile String room;
     private volatile String name;
     private volatile String selfId;
+    /** ICE-серверы: дефолт локальный, заменяются серверными из RoomState. */
+    private volatile List<RTCIceServer> iceServers = IceServersConfig.resolve();
 
     public MeshCoordinator(WebRtcEngine engine, MeshListener listener) {
         this.engine = engine;
@@ -81,6 +86,7 @@ public final class MeshCoordinator implements SignalingListener {
     public void onMessage(SignalMessage msg) {
         if (msg instanceof RoomState rs) {
             selfId = rs.selfId();
+            applyIceServers(rs.iceServers());
             for (Peer p : rs.peers()) {
                 listener.onPeerJoined(p.id(), p.name());
                 onPeerKnown(p.id());
@@ -170,10 +176,27 @@ public final class MeshCoordinator implements SignalingListener {
             public void onError(Throwable error) {
                 listener.onError(error);
             }
-        });
+        }, iceServers);
         for (MediaStreamTrack track : localTracks) {
             session.addTrack(track);
         }
         return session;
     }
+
+    /** Конвертировать ICE-серверы из протокола в формат webrtc-java. */
+    private void applyIceServers(List<IceServer> servers) {
+        if (servers == null || servers.isEmpty()) {
+            return; // оставляем локальный дефолт
+        }
+        List<RTCIceServer> converted = new ArrayList<>();
+        for (IceServer s : servers) {
+            RTCIceServer r = new RTCIceServer();
+            r.urls = new ArrayList<>(s.urls());
+            r.username = s.username();
+            r.password = s.credential();
+            converted.add(r);
+        }
+        iceServers = converted;
+    }
 }
+

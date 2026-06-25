@@ -28,8 +28,8 @@ public sealed interface SignalMessage {
     /** client&rarr;server: войти в комнату под именем. */
     record Join(String room, String name) implements SignalMessage {}
 
-    /** server&rarr;client: твой id и текущие участники (кроме тебя). */
-    record RoomState(String selfId, List<Peer> peers) implements SignalMessage {}
+    /** server&rarr;client: твой id, участники (кроме тебя) и ICE-серверы (STUN/TURN). */
+    record RoomState(String selfId, List<Peer> peers, List<IceServer> iceServers) implements SignalMessage {}
 
     /** server&rarr;client: присоединился новый участник. */
     record PeerJoined(String id, String name) implements SignalMessage {}
