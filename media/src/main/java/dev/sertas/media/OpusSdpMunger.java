@@ -1,6 +1,8 @@
 package dev.sertas.media;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,7 +34,51 @@ public final class OpusSdpMunger {
 
     private static final Pattern RTPMAP = Pattern.compile("(?m)^a=rtpmap:(\\d+)\\s+opus/48000/2");
 
+    /** Мунж первого Opus во всём SDP (обратная совместимость). */
     public static String applyMusicProfile(String sdp) {
+        return mungeOpusFmtp(sdp);
+    }
+
+    /**
+     * Применяет «музыкальный» профиль Opus ТОЛЬКО к m-секции, содержащей маркер
+     * (id трека из {@code a=msid}, напр. {@code "screen-audio"}). Прочие аудио-секции
+     * (микрофон — mono VOIP) не трогает. Маркер не найден → SDP без изменений.
+     */
+    public static String applyMusicProfileToTrack(String sdp, String trackMarker) {
+        String[] parts = splitSections(sdp);
+        StringBuilder out = new StringBuilder(parts[0]);
+        for (int i = 1; i < parts.length; i++) {
+            String section = parts[i];
+            if (section.startsWith("m=audio") && section.contains(trackMarker)) {
+                out.append(mungeOpusFmtp(section));
+            } else {
+                out.append(section);
+            }
+        }
+        return out.toString();
+    }
+
+    /** parts[0] — session-заголовок (до первой m=); parts[i>=1] — m-секции с разделителями. */
+    private static String[] splitSections(String sdp) {
+        List<Integer> starts = new ArrayList<>();
+        Matcher m = Pattern.compile("(?m)^m=").matcher(sdp);
+        while (m.find()) {
+            starts.add(m.start());
+        }
+        if (starts.isEmpty()) {
+            return new String[]{sdp};
+        }
+        List<String> parts = new ArrayList<>();
+        parts.add(sdp.substring(0, starts.get(0)));
+        for (int i = 0; i < starts.size(); i++) {
+            int end = (i + 1 < starts.size()) ? starts.get(i + 1) : sdp.length();
+            parts.add(sdp.substring(starts.get(i), end));
+        }
+        return parts.toArray(new String[0]);
+    }
+
+    /** Мунж первого Opus-fmtp в переданном фрагменте SDP (секции или целого SDP). */
+    private static String mungeOpusFmtp(String sdp) {
         Matcher rtpmap = RTPMAP.matcher(sdp);
         if (!rtpmap.find()) {
             return sdp;
