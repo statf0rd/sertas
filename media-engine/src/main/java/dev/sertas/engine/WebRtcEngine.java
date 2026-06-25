@@ -83,6 +83,11 @@ public final class WebRtcEngine {
         return factory.createVideoTrack(label, source);
     }
 
+    /** Аудио-трек из произвольного источника (микрофон, кастомный push-источник). */
+    public AudioTrack createAudioTrack(String label, AudioTrackSource source) {
+        return factory.createAudioTrack(label, source);
+    }
+
     /** Дефолтная конфигурация: STUN + (если задан) TURN из {@link IceServersConfig}. */
     public static RTCConfiguration defaultConfig() {
         RTCConfiguration cfg = new RTCConfiguration();
