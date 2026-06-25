@@ -2,6 +2,7 @@ package dev.sertas.engine;
 
 import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCIceCandidate;
+import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
@@ -158,6 +159,11 @@ public final class MeshCoordinator implements SignalingListener {
             @Override
             public void onDataChannel(RTCDataChannel channel) {
                 listener.onControlChannel(peerId, channel);
+            }
+
+            @Override
+            public void onTrack(RTCRtpTransceiver transceiver) {
+                listener.onRemoteTrack(peerId, transceiver);
             }
 
             @Override

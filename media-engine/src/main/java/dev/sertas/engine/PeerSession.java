@@ -9,6 +9,7 @@ import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCOfferOptions;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
+import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
 import dev.onvoid.webrtc.SetSessionDescriptionObserver;
@@ -38,6 +39,9 @@ public final class PeerSession {
 
         /** Удалённый пир открыл data-channel. */
         default void onDataChannel(RTCDataChannel channel) {}
+
+        /** Удалённый трек (аудио/видео) согласован — для рендера/воспроизведения. */
+        default void onTrack(RTCRtpTransceiver transceiver) {}
 
         /** Ошибка в асинхронном шаге. Никогда не бросается в нативный код. */
         default void onError(Throwable error) {}
@@ -74,6 +78,11 @@ public final class PeerSession {
             @Override
             public void onDataChannel(RTCDataChannel channel) {
                 safe(() -> signals.onDataChannel(channel));
+            }
+
+            @Override
+            public void onTrack(RTCRtpTransceiver transceiver) {
+                safe(() -> signals.onTrack(transceiver));
             }
         });
     }

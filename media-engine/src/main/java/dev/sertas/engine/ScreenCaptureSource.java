@@ -8,12 +8,12 @@ import java.util.List;
 
 /**
  * Демонстрация экрана через встроенный {@link VideoDesktopSource} (libwebrtc
- * DesktopCapturer; на macOS использует ScreenCaptureKit под капотом). Это
- * быстрый старт; апгрейд на нативный SCStream/WGC — отдельным шагом, если FPS
- * встроенного захвата недостаточен (см. дизайн §5.1, §7).
+ * DesktopCapturer; на macOS — ScreenCaptureKit под капотом).
  *
- * <p>Захват видео; СИСТЕМНЫЙ ЗВУК демонстрации добавляется отдельным треком
- * через нативный хелпер + CustomAudioSource (Фаза 3).
+ * <p>Источник создаётся пустым при входе в звонок — чтобы видео-m-line
+ * согласовался сразу, без renegotiation. Захват начинается позже: выбрать экран
+ * через {@link #select} и {@link #start}. Системный звук демонстрации — отдельный
+ * трек (Фаза 3), здесь только видео.
  */
 public final class ScreenCaptureSource {
 
@@ -36,16 +36,6 @@ public final class ScreenCaptureSource {
 
     private final VideoDesktopSource source = new VideoDesktopSource();
 
-    /**
-     * @param screenId id экрана из {@link #screens()}
-     * @param quality  пресет качества
-     */
-    public ScreenCaptureSource(long screenId, Quality quality) {
-        source.setSourceId(screenId, false); // false = экран (true было бы окно)
-        source.setFrameRate(quality.fps);
-        source.setMaxFrameSize(quality.maxWidth, quality.maxHeight);
-    }
-
     /** Доступные экраны. На macOS требует разрешения Screen Recording (TCC). */
     public static List<DesktopSource> screens() {
         ScreenCapturer capturer = new ScreenCapturer();
@@ -56,6 +46,14 @@ public final class ScreenCaptureSource {
         }
     }
 
+    /** Выбрать экран и качество. Вызывать до {@link #start}. */
+    public void select(long screenId, Quality quality) {
+        source.setSourceId(screenId, false); // false = экран (true было бы окно)
+        source.setFrameRate(quality.fps);
+        source.setMaxFrameSize(quality.maxWidth, quality.maxHeight);
+    }
+
+    /** Источник для создания видео-трека (создаётся при входе в звонок). */
     public VideoDesktopSource source() {
         return source;
     }

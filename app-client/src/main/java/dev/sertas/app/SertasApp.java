@@ -36,16 +36,25 @@ public class SertasApp extends Application {
     }
 
     private void showCall(String room) {
-        CallView call = new CallView(room, controller.participants());
+        CallView call = new CallView(room, controller.participants(), controller.videoTiles());
         call.muteButton().selectedProperty().addListener((obs, was, muted) -> {
             controller.setMicMuted(muted);
             call.muteButton().setText(muted ? "Микрофон выкл" : "Микрофон вкл");
+        });
+        call.shareButton().selectedProperty().addListener((obs, was, on) -> {
+            if (on) {
+                controller.startScreenShare();
+                call.shareButton().setText("Остановить показ");
+            } else {
+                controller.stopScreenShare();
+                call.shareButton().setText("Демонстрация");
+            }
         });
         call.leaveButton().setOnAction(e -> {
             controller.leave();
             showJoin();
         });
-        stage.setScene(new Scene(call.getRoot(), 420, 360));
+        stage.setScene(new Scene(call.getRoot(), 640, 560));
     }
 
     @Override
