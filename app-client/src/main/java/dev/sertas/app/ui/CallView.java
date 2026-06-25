@@ -21,6 +21,7 @@ public final class CallView {
     private final BorderPane root = new BorderPane();
     private final ToggleButton mute = new ToggleButton("Микрофон вкл");
     private final ToggleButton share = new ToggleButton("Демонстрация");
+    private final ToggleButton screenAudio = new ToggleButton("Звук демонстрации");
     private final Button leave = new Button("Выйти");
 
     public CallView(String room,
@@ -49,7 +50,7 @@ public final class CallView {
         VBox center = new VBox(8, videoScroll, table);
         VBox.setVgrow(videoScroll, Priority.ALWAYS);
 
-        HBox controls = new HBox(10, mute, share, leave);
+        HBox controls = new HBox(10, mute, share, screenAudio, leave);
         controls.setPadding(new Insets(10));
 
         VBox top = new VBox(header);
@@ -70,6 +71,10 @@ public final class CallView {
 
     public ToggleButton shareButton() {
         return share;
+    }
+
+    public ToggleButton screenAudioButton() {
+        return screenAudio;
     }
 
     public Button leaveButton() {

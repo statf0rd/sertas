@@ -48,6 +48,18 @@ public class SertasApp extends Application {
             } else {
                 controller.stopScreenShare();
                 call.shareButton().setText("Демонстрация");
+                call.screenAudioButton().setSelected(false);
+            }
+        });
+        // Звук демо доступен только во время демонстрации экрана.
+        call.screenAudioButton().disableProperty().bind(call.shareButton().selectedProperty().not());
+        call.screenAudioButton().selectedProperty().addListener((obs, was, on) -> {
+            if (on) {
+                controller.startScreenAudio();
+                call.screenAudioButton().setText("Звук демо вкл");
+            } else {
+                controller.stopScreenAudio();
+                call.screenAudioButton().setText("Звук демонстрации");
             }
         });
         call.leaveButton().setOnAction(e -> {
