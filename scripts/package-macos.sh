@@ -31,6 +31,10 @@ for art in "jackson-databind-$JACKSON" "jackson-core-$JACKSON" "jackson-annotati
   cp "$f" "$RES/lib/"
 done
 
+echo "[2b/5] native audio dylib (ScreenCaptureKit)"
+"$ROOT/scripts/build-macos-audio-dylib.sh"
+cp "$ROOT/media-engine/build/native/libsertas_audio.dylib" "$RES/lib/"
+
 echo "[3/5] downloading macOS arm64 native jars"
 curl -fsSL "$MC/dev/onvoid/webrtc/webrtc-java/$WEBRTC/webrtc-java-$WEBRTC-macos-aarch64.jar" -o "$RES/lib/webrtc-java-$WEBRTC-macos-aarch64.jar"
 for m in base graphics controls; do
@@ -71,6 +75,7 @@ cat > "$APP/Contents/MacOS/sertas" <<LAUNCH
 HERE="\$(cd "\$(dirname "\$0")/../Resources" && pwd)"
 exec "\$HERE/jre/Contents/Home/bin/java" \\
   -Dsertas.server="$SERVER_URL" \\
+  -Dsertas.audio.dylib="\$HERE/lib/libsertas_audio.dylib" \\
 $TURN_LINE
   -cp "\$HERE/lib/*" dev.sertas.app.Launcher
 LAUNCH

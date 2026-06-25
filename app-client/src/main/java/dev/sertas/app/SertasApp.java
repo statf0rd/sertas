@@ -56,7 +56,11 @@ public class SertasApp extends Application {
         call.screenAudioButton().selectedProperty().addListener((obs, was, on) -> {
             if (on) {
                 controller.startScreenAudio();
-                call.screenAudioButton().setText("Звук демо вкл");
+                if (controller.isScreenAudioOn()) {
+                    call.screenAudioButton().setText("Звук демо вкл");
+                } else {
+                    call.screenAudioButton().setSelected(false); // захват недоступен — откат
+                }
             } else {
                 controller.stopScreenAudio();
                 call.screenAudioButton().setText("Звук демонстрации");

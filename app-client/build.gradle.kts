@@ -10,6 +10,11 @@ javafx {
 
 application {
     mainClass.set("dev.sertas.app.SertasApp")
+    // Нативный захват системного звука (Фаза B). Собрать: scripts/build-macos-audio-dylib.sh.
+    // Если файла нет — System.load() мягко падает, звук демо просто недоступен.
+    applicationDefaultJvmArgs = listOf(
+        "-Dsertas.audio.dylib=${rootDir}/media-engine/build/native/libsertas_audio.dylib"
+    )
 }
 
 dependencies {

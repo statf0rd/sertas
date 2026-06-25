@@ -7,7 +7,7 @@ import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.sertas.app.ui.ParticipantModel;
 import dev.sertas.app.ui.VideoTile;
-import dev.sertas.engine.FakeSystemAudioProvider;
+import dev.sertas.engine.MacSystemAudioCapture;
 import dev.sertas.engine.MeshCoordinator;
 import dev.sertas.engine.MeshListener;
 import dev.sertas.engine.ScreenCaptureSource;
@@ -128,11 +128,20 @@ public final class CallController implements MeshListener {
 
     /** Включить передачу системного звука демонстрации зрителям. */
     public void startScreenAudio() {
-        if (screenAudio != null) {
-            // Фаза A: временный источник-синус 440Гц. Фаза B заменит на
-            // нативный ScreenCaptureKit (MacSystemAudioCapture).
-            screenAudio.start(new FakeSystemAudioProvider(440));
+        if (screenAudio == null) {
+            return;
+        }
+        if (!MacSystemAudioCapture.isAvailable()) {
+            onError(new IllegalStateException(
+                    "нативный захват звука недоступен (соберите scripts/build-macos-audio-dylib.sh "
+                            + "и задайте -Dsertas.audio.dylib)"));
+            return;
+        }
+        try {
+            screenAudio.start(new MacSystemAudioCapture());
             screenAudioOn = true;
+        } catch (RuntimeException e) {
+            onError(e);
         }
     }
 
