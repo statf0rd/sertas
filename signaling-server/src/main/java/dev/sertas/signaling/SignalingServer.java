@@ -8,6 +8,7 @@ import io.javalin.websocket.WsContext;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * WebSocket-обёртка над {@link SignalingService}. Сопоставляет id соединения
@@ -41,7 +42,9 @@ public final class SignalingServer {
                     ctx.closeSession(1008, "unauthorized"); // 1008 = policy violation
                     return;
                 }
-                ctx.enableAutomaticPings();
+                // Пинг каждые 5с держит соединение живым через VPN/NAT, которые
+                // часто рвут «тихие» TCP за ~10с (иначе клиент молча отваливается).
+                ctx.enableAutomaticPings(5, TimeUnit.SECONDS);
                 conns.put(ctx.sessionId(), ctx);
                 System.out.println("CONNECT " + ctx.sessionId());
             });
