@@ -1,12 +1,11 @@
 package dev.sertas.app.ui;
 
-import javafx.beans.binding.Bindings;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
-import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.ToggleButton;
@@ -26,12 +25,12 @@ public final class CallView {
 
     public CallView(String room,
                     ObservableList<ParticipantModel> participants,
-                    ObservableList<Node> videoTiles) {
+                    FlowPane videoPane) {
         Label header = new Label("Комната: " + room);
 
-        FlowPane videoPane = new FlowPane(10, 10);
-        videoPane.setPadding(new Insets(10));
-        Bindings.bindContent(videoPane.getChildren(), videoTiles);
+        ScrollPane videoScroll = new ScrollPane(videoPane);
+        videoScroll.setFitToWidth(true);
+        videoScroll.setFitToHeight(true);
 
         TableView<ParticipantModel> table = new TableView<>();
         TableColumn<ParticipantModel, String> nameCol = new TableColumn<>("Участник");
@@ -45,9 +44,10 @@ public final class CallView {
         table.setItems(participants);
         table.setPlaceholder(new Label("Ожидание участников…"));
         table.setPrefHeight(160);
+        table.setMaxHeight(160);
 
-        VBox center = new VBox(8, videoPane, table);
-        VBox.setVgrow(videoPane, Priority.ALWAYS);
+        VBox center = new VBox(8, videoScroll, table);
+        VBox.setVgrow(videoScroll, Priority.ALWAYS);
 
         HBox controls = new HBox(10, mute, share, leave);
         controls.setPadding(new Insets(10));

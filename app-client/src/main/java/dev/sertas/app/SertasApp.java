@@ -36,7 +36,7 @@ public class SertasApp extends Application {
     }
 
     private void showCall(String room) {
-        CallView call = new CallView(room, controller.participants(), controller.videoTiles());
+        CallView call = new CallView(room, controller.participants(), controller.videoPane());
         call.muteButton().selectedProperty().addListener((obs, was, muted) -> {
             controller.setMicMuted(muted);
             call.muteButton().setText(muted ? "Микрофон выкл" : "Микрофон вкл");

@@ -14,7 +14,8 @@ import dev.sertas.engine.WebRtcEngine;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.Node;
+import javafx.geometry.Insets;
+import javafx.scene.layout.FlowPane;
 
 import java.util.HashMap;
 import java.util.List;
@@ -27,7 +28,7 @@ import java.util.Map;
 public final class CallController implements MeshListener {
 
     private final ObservableList<ParticipantModel> participants = FXCollections.observableArrayList();
-    private final ObservableList<Node> videoTiles = FXCollections.observableArrayList();
+    private final FlowPane videoPane = new FlowPane(12, 12);
     private final Map<String, ParticipantModel> byId = new HashMap<>();   // только FX-поток
     private final Map<String, VideoTile> tiles = new HashMap<>();         // только FX-поток
 
@@ -39,12 +40,17 @@ public final class CallController implements MeshListener {
     private boolean micMuted = false;
     private boolean sharing = false;
 
+    public CallController() {
+        videoPane.setPadding(new Insets(12));
+    }
+
     public ObservableList<ParticipantModel> participants() {
         return participants;
     }
 
-    public ObservableList<Node> videoTiles() {
-        return videoTiles;
+    /** Панель с видео-плитками удалённых участников. */
+    public FlowPane videoPane() {
+        return videoPane;
     }
 
     /** Создать движок, треки (микрофон + экран) и войти в комнату. */
@@ -127,7 +133,7 @@ public final class CallController implements MeshListener {
         Platform.runLater(() -> {
             tiles.values().forEach(VideoTile::dispose);
             tiles.clear();
-            videoTiles.clear();
+            videoPane.getChildren().clear();
             participants.clear();
             byId.clear();
             self = null;
@@ -157,7 +163,7 @@ public final class CallController implements MeshListener {
             }
             VideoTile tile = tiles.remove(peerId);
             if (tile != null) {
-                videoTiles.remove(tile.node());
+                videoPane.getChildren().remove(tile.node());
                 tile.dispose();
             }
         });
@@ -182,12 +188,12 @@ public final class CallController implements MeshListener {
             }
             VideoTile old = tiles.remove(peerId);
             if (old != null) {
-                videoTiles.remove(old.node());
+                videoPane.getChildren().remove(old.node());
                 old.dispose();
             }
             VideoTile tile = new VideoTile((VideoTrack) track);
             tiles.put(peerId, tile);
-            videoTiles.add(tile.node());
+            videoPane.getChildren().add(tile.node());
         });
     }
 
