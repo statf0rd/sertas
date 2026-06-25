@@ -18,6 +18,7 @@ import dev.sertas.protocol.SignalMessage.PeerJoined;
 import dev.sertas.protocol.SignalMessage.PeerLeft;
 import dev.sertas.protocol.SignalMessage.RoomState;
 import dev.sertas.protocol.SignalMessage.TrackMeta;
+import dev.sertas.media.OpusSdpMunger;
 import dev.sertas.signaling.client.SignalingClient;
 import dev.sertas.signaling.client.SignalingListener;
 
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.UnaryOperator;
 
 /**
  * Оркестратор P2P-меша: связывает {@link SignalingClient} с {@link PeerSession}
@@ -39,6 +41,10 @@ public final class MeshCoordinator implements SignalingListener {
     private final SignalingClient signaling = new SignalingClient(this);
     private final Map<String, PeerSession> sessions = new ConcurrentHashMap<>();
     private final List<MediaStreamTrack> localTracks = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Музыкальный профиль Opus навешивается только на секцию трека звука демо. */
+    private static final UnaryOperator<String> SCREEN_AUDIO_MUSIC =
+            sdp -> OpusSdpMunger.applyMusicProfileToTrack(sdp, SystemAudioTrack.LABEL);
 
     private volatile String room;
     private volatile String name;
@@ -176,7 +182,7 @@ public final class MeshCoordinator implements SignalingListener {
             public void onError(Throwable error) {
                 listener.onError(error);
             }
-        }, iceServers);
+        }, iceServers, SCREEN_AUDIO_MUSIC);
         for (MediaStreamTrack track : localTracks) {
             session.addTrack(track);
         }

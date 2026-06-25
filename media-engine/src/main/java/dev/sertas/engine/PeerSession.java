@@ -21,6 +21,7 @@ import dev.onvoid.webrtc.media.MediaStreamTrack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 
 /**
  * Один {@link RTCPeerConnection} к одному удалённому пиру в P2P-меше. Прячет
@@ -53,6 +54,9 @@ public final class PeerSession {
     private final RTCPeerConnection pc;
     private final Signals signals;
 
+    /** Преобразование локального SDP перед setLocalDescription (SDP-munging). */
+    private final UnaryOperator<String> localSdpTransform;
+
     private final Object lock = new Object();
     private final List<RTCIceCandidate> pendingRemote = new ArrayList<>();
     private boolean remoteDescriptionSet = false;
@@ -63,7 +67,18 @@ public final class PeerSession {
 
     /** @param iceServers ICE-серверы от сервера; null/пусто → дефолт движка. */
     public PeerSession(WebRtcEngine engine, Signals signals, List<RTCIceServer> iceServers) {
+        this(engine, signals, iceServers, UnaryOperator.identity());
+    }
+
+    /**
+     * @param iceServers        ICE-серверы от сервера; null/пусто → дефолт движка.
+     * @param localSdpTransform преобразование локального SDP перед
+     *                          {@code setLocalDescription} (SDP-munging); identity — без изменений.
+     */
+    public PeerSession(WebRtcEngine engine, Signals signals, List<RTCIceServer> iceServers,
+                       UnaryOperator<String> localSdpTransform) {
         this.signals = signals;
+        this.localSdpTransform = localSdpTransform;
         this.pc = engine.createPeerConnection(new PeerConnectionObserver() {
             @Override
             public void onIceCandidate(RTCIceCandidate candidate) {
@@ -181,10 +196,14 @@ public final class PeerSession {
     }
 
     private void applyAndSignalLocal(RTCSessionDescription description) {
-        pc.setLocalDescription(description, new SetSessionDescriptionObserver() {
+        String munged = localSdpTransform.apply(description.sdp);
+        RTCSessionDescription local = munged.equals(description.sdp)
+                ? description
+                : new RTCSessionDescription(description.sdpType, munged);
+        pc.setLocalDescription(local, new SetSessionDescriptionObserver() {
             @Override
             public void onSuccess() {
-                safe(() -> signals.onLocalDescription(description));
+                safe(() -> signals.onLocalDescription(local));
             }
 
             @Override
