@@ -1,6 +1,7 @@
 package dev.sertas.signaling;
 
 import dev.sertas.protocol.SignalCodec;
+import dev.sertas.protocol.SignalMessage;
 import io.javalin.Javalin;
 import io.javalin.websocket.WsContext;
 
@@ -36,15 +37,25 @@ public final class SignalingServer {
         app = Javalin.create().ws("/signal", ws -> {
             ws.onConnect(ctx -> {
                 if (requiredToken != null && !requiredToken.equals(ctx.queryParam("token"))) {
+                    System.out.println("REJECT(token) " + ctx.sessionId());
                     ctx.closeSession(1008, "unauthorized"); // 1008 = policy violation
                     return;
                 }
                 ctx.enableAutomaticPings();
                 conns.put(ctx.sessionId(), ctx);
+                System.out.println("CONNECT " + ctx.sessionId());
             });
-            ws.onMessage(ctx ->
-                    dispatch(service.onMessage(ctx.sessionId(), codec.decode(ctx.message()))));
+            ws.onMessage(ctx -> {
+                SignalMessage msg = codec.decode(ctx.message());
+                if (msg instanceof SignalMessage.Join j) {
+                    System.out.println("JOIN " + ctx.sessionId()
+                            + " room=[" + j.room() + "] len=" + j.room().length()
+                            + " name=[" + j.name() + "]");
+                }
+                dispatch(service.onMessage(ctx.sessionId(), msg));
+            });
             ws.onClose(ctx -> {
+                System.out.println("CLOSE " + ctx.sessionId());
                 dispatch(service.onDisconnect(ctx.sessionId()));
                 conns.remove(ctx.sessionId());
             });

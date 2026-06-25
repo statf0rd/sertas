@@ -10,6 +10,7 @@ import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelBuffer;
 import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
+import javafx.scene.layout.Region;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,10 +41,19 @@ public final class VideoTile {
 
     public VideoTile(VideoTrack track) {
         this.track = track;
-        view.setFitWidth(360);
         view.setPreserveRatio(true);
         view.setManaged(false);
         view.setVisible(false);
+        // Видео заполняет ширину контейнера (на весь доступный размер окна).
+        view.setFitWidth(640);
+        view.parentProperty().addListener((obs, oldParent, parent) -> {
+            view.fitWidthProperty().unbind();
+            if (parent instanceof Region region) {
+                view.fitWidthProperty().bind(region.widthProperty().subtract(24));
+            } else {
+                view.setFitWidth(640);
+            }
+        });
         track.addSink(sink);
         timer = new AnimationTimer() {
             @Override
@@ -72,7 +82,8 @@ public final class VideoTile {
                     height = fh;
                     sizeChanged = true;
                 }
-                VideoBufferConverter.convertFromI420(frame.buffer, buffer, FourCC.BGRA);
+                // libyuv FourCC.ARGB = байты B,G,R,A в памяти = JavaFX BYTE_BGRA.
+                VideoBufferConverter.convertFromI420(frame.buffer, buffer, FourCC.ARGB);
                 dirty = true;
             } finally {
                 lock.unlock();

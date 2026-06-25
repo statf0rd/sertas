@@ -9,6 +9,9 @@ import dev.onvoid.webrtc.RTCIceCandidate;
 import dev.onvoid.webrtc.RTCOfferOptions;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
+import dev.onvoid.webrtc.RTCRtpEncodingParameters;
+import dev.onvoid.webrtc.RTCRtpSendParameters;
+import dev.onvoid.webrtc.RTCRtpSender;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.RTCSdpType;
 import dev.onvoid.webrtc.RTCSessionDescription;
@@ -97,10 +100,24 @@ public final class PeerSession {
 
     /** Локальный медиа-трек (микрофон/камера/экран) в этот peer-connection. */
     public void addTrack(MediaStreamTrack track) {
-        pc.addTrack(track, List.of(STREAM_ID));
+        RTCRtpSender sender = pc.addTrack(track, List.of(STREAM_ID));
+        if (MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind())) {
+            try {
+                RTCRtpSendParameters params = sender.getParameters();
+                if (params.encodings != null && !params.encodings.isEmpty()) {
+                    for (RTCRtpEncodingParameters enc : params.encodings) {
+                        enc.maxBitrate = VIDEO_MAX_BITRATE;
+                    }
+                    sender.setParameters(params);
+                }
+            } catch (RuntimeException ignored) {
+                // параметры можно будет применить после переговорки
+            }
+        }
     }
 
     private static final String STREAM_ID = "sertas";
+    private static final int VIDEO_MAX_BITRATE = 5_000_000; // 5 Мбит/с для чёткой демонстрации
 
     /** Инициировать соединение: создать offer, установить локально, отдать наружу. */
     public void createOffer() {

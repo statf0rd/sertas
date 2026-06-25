@@ -54,7 +54,7 @@ public class SertasApp extends Application {
             controller.leave();
             showJoin();
         });
-        stage.setScene(new Scene(call.getRoot(), 640, 560));
+        stage.setScene(new Scene(call.getRoot(), 1000, 720));
     }
 
     @Override
