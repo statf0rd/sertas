@@ -3,7 +3,6 @@ package dev.sertas.engine;
 import dev.onvoid.webrtc.PeerConnectionFactory;
 import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCConfiguration;
-import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase;
 import dev.onvoid.webrtc.media.audio.AudioOptions;
@@ -14,7 +13,6 @@ import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.onvoid.webrtc.media.video.VideoTrackSource;
 
 import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Владелец единственного {@link PeerConnectionFactory} на приложение. Создаёт
@@ -71,13 +69,10 @@ public final class WebRtcEngine {
         return factory.createVideoTrack(label, source);
     }
 
-    /** Дефолтная конфигурация: публичный STUN Google для NAT-traversal. */
+    /** Дефолтная конфигурация: STUN + (если задан) TURN из {@link IceServersConfig}. */
     public static RTCConfiguration defaultConfig() {
         RTCConfiguration cfg = new RTCConfiguration();
-        RTCIceServer stun = new RTCIceServer();
-        stun.urls = List.of("stun:stun.l.google.com:19302");
-        cfg.iceServers = new ArrayList<>();
-        cfg.iceServers.add(stun);
+        cfg.iceServers = new ArrayList<>(IceServersConfig.resolve());
         return cfg;
     }
 

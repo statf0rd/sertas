@@ -100,5 +100,41 @@ ws://HOST:8080/signal?token=ВАШ_ТОКЕН
   поставить reverse-proxy (Caddy/nginx) с Let's Encrypt и проксировать на
   `localhost:8080`, в приложении использовать `wss://домен/signal?token=...`.
   (Для bare-IP без домена корректный публичный TLS-сертификат не выдаётся.)
-- **NAT:** если удалённые участники не соединяются (статус застревает на
-  «соединение…») — поднять TURN-сервер (coturn) на этом же VPS.
+- **NAT:** прямой P2P между разными сетями часто невозможен (симметричный NAT);
+  статус участника тогда — «ошибка» (ICE FAILED). Решается TURN-сервером (см.
+  ниже).
+
+## TURN-сервер (coturn) для NAT
+
+Ретранслирует медиа, когда прямое соединение невозможно. Лёгкий (~7 МБ).
+
+```bash
+ssh "$VPS" '
+  DEBIAN_FRONTEND=noninteractive apt-get install -y coturn
+  PASS=$(openssl rand -hex 12)
+  cat > /etc/turnserver.conf <<CONF
+listening-port=3478
+fingerprint
+lt-cred-mech
+user=sertas:${PASS}
+realm=sertas
+external-ip=ВАШ_IP
+min-port=49160
+max-port=49200
+no-tls
+no-dtls
+no-cli
+simple-log
+CONF
+  echo TURNSERVER_ENABLED=1 > /etc/default/coturn
+  systemctl enable --now coturn
+  echo "TURN creds: sertas:${PASS}"
+'
+```
+
+Открыть во внешнем фаерволе: `3478/udp`, `3478/tcp`, `49160-49200/udp`.
+
+Указать TURN в приложении (креды не в коде). Формат значения:
+`turn:HOST:3478,USER,PASS`. Источники (по приоритету): `-Dsertas.turn=...`, env
+`SERTAS_TURN`, файл `~/.sertas/turn`. В бандл вшивается через `SERTAS_TURN` при
+сборке (`scripts/package-windows.sh`).
