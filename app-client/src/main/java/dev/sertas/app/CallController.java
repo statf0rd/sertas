@@ -7,9 +7,11 @@ import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.sertas.app.ui.ParticipantModel;
 import dev.sertas.app.ui.VideoTile;
+import dev.sertas.engine.FakeSystemAudioProvider;
 import dev.sertas.engine.MeshCoordinator;
 import dev.sertas.engine.MeshListener;
 import dev.sertas.engine.ScreenCaptureSource;
+import dev.sertas.engine.SystemAudioTrack;
 import dev.sertas.engine.WebRtcEngine;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -36,9 +38,11 @@ public final class CallController implements MeshListener {
     private MeshCoordinator mesh;
     private AudioTrack mic;
     private ScreenCaptureSource screen;
+    private SystemAudioTrack screenAudio;
     private ParticipantModel self;
     private boolean micMuted = false;
     private boolean sharing = false;
+    private boolean screenAudioOn = false;
 
     public CallController() {
         videoPane.setPadding(new Insets(12));
@@ -66,6 +70,10 @@ public final class CallController implements MeshListener {
         screen = new ScreenCaptureSource();
         VideoTrack screenTrack = engine.createVideoTrack("screen", screen.source());
         mesh.addLocalTrack(screenTrack);
+
+        // Трек звука демонстрации согласуем сразу (как видео-экран), включаем позже.
+        screenAudio = new SystemAudioTrack(engine);
+        mesh.addLocalTrack(screenAudio.track());
 
         Platform.runLater(() -> {
             self = new ParticipantModel("self", name);
@@ -118,8 +126,34 @@ public final class CallController implements MeshListener {
         return sharing;
     }
 
+    /** Включить передачу системного звука демонстрации зрителям. */
+    public void startScreenAudio() {
+        if (screenAudio != null) {
+            // Фаза A: временный источник-синус 440Гц. Фаза B заменит на
+            // нативный ScreenCaptureKit (MacSystemAudioCapture).
+            screenAudio.start(new FakeSystemAudioProvider(440));
+            screenAudioOn = true;
+        }
+    }
+
+    public void stopScreenAudio() {
+        if (screenAudio != null) {
+            screenAudio.stop();
+        }
+        screenAudioOn = false;
+    }
+
+    public boolean isScreenAudioOn() {
+        return screenAudioOn;
+    }
+
     public void leave() {
         stopScreenShare();
+        if (screenAudio != null) {
+            screenAudio.stop();
+            screenAudio = null;
+        }
+        screenAudioOn = false;
         if (mesh != null) {
             mesh.stop();
             mesh = null;
