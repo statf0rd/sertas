@@ -29,6 +29,7 @@ public class SertasApp extends Application {
             if (url.isEmpty() || room.isEmpty() || name.isEmpty()) {
                 return;
             }
+            JoinPrefs.save(url, room, name);
             controller.join(url, room, name);
             showCall(room);
         });
