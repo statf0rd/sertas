@@ -106,12 +106,15 @@ final class VideoCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
                 self.stream = s
                 let st = DispatchSemaphore(value: 0)
                 s.startCapture { err in ok = (err == nil); st.signal() }
-                st.wait()
+                _ = st.wait(timeout: .now() + 4) // не виснуть, если колбэк не пришёл
             } catch {
                 ok = false
             }
         }
-        sem.wait()
+        // Таймаут: без разрешения Screen Recording колбэк не приходит — иначе зависание.
+        if sem.wait(timeout: .now() + 5) == .timedOut {
+            return false
+        }
         return ok
     }
 

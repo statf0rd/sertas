@@ -104,12 +104,15 @@ final class AudioCapturer: NSObject, SCStreamOutput, SCStreamDelegate {
                     started = (err == nil)
                     startSem.signal()
                 }
-                startSem.wait()
+                _ = startSem.wait(timeout: .now() + 4) // не виснуть, если колбэк не пришёл
             } catch {
                 started = false
             }
         }
-        sem.wait()
+        // Таймаут: без разрешения Screen Recording колбэк не приходит — иначе зависание.
+        if sem.wait(timeout: .now() + 5) == .timedOut {
+            return false
+        }
         return started
     }
 
