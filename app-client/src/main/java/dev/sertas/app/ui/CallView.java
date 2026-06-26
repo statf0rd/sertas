@@ -61,7 +61,11 @@ public final class CallView {
         VBox center = new VBox(8, videoScroll, table);
         VBox.setVgrow(videoScroll, Priority.ALWAYS);
 
-        HBox controls = new HBox(10, mute, share, screenAudio, leave);
+        // Кнопку звука демо показываем только если фича включена (-Dsertas.demoaudio=on);
+        // по умолчанию выключена — на реальном ADM она роняет приложение (см. CallController).
+        HBox controls = "on".equalsIgnoreCase(System.getProperty("sertas.demoaudio", "off"))
+                ? new HBox(10, mute, share, screenAudio, leave)
+                : new HBox(10, mute, share, leave);
         controls.setPadding(new Insets(10));
 
         VBox top = new VBox(header);

@@ -89,9 +89,16 @@ public final class CallController implements MeshListener {
         VideoTrack screenTrack = engine.createVideoTrack("screen", screen.source());
         mesh.addLocalTrack(screenTrack);
 
-        // Трек звука демонстрации согласуем сразу (как видео-экран), включаем позже.
-        screenAudio = new SystemAudioTrack(engine);
-        mesh.addLocalTrack(screenAudio.track());
+        // Звук демо (CustomAudioSource) ВЫКЛЮЧЕН по умолчанию: на реальном ADM
+        // его pushAudio конфликтует с нативным аудио-трактом webrtc → гонка в
+        // audio_send_stream (RUNS_SERIALIZED) → фатальный краш на железе. Headless
+        // не ловил (HeadlessAudioDeviceModule, без реального ADM). Включается
+        // -Dsertas.demoaudio=on — пока архитектура не починена (нужен отдельный
+        // headless-ADM-путь для pushed-PCM).
+        if ("on".equalsIgnoreCase(System.getProperty("sertas.demoaudio", "off"))) {
+            screenAudio = new SystemAudioTrack(engine);
+            mesh.addLocalTrack(screenAudio.track());
+        }
 
         Platform.runLater(() -> {
             self = new ParticipantModel("self", name);
