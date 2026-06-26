@@ -16,9 +16,10 @@ echo "[1/1] swiftc -> libsertas_audio.dylib (JDK: $JH)"
 swiftc -emit-library -O \
   -import-objc-header "$ROOT/native-capture/macos/jni_bridge.h" \
   -I "$JH/include" -I "$JH/include/darwin" \
-  -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia \
+  -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework CoreVideo \
   -o "$OUT/libsertas_audio.dylib" \
-  "$ROOT/native-capture/macos/SertasAudio.swift"
+  "$ROOT/native-capture/macos/SertasAudio.swift" \
+  "$ROOT/native-capture/macos/SertasVideo.swift"
 
 echo "done -> $OUT/libsertas_audio.dylib"
 nm -gU "$OUT/libsertas_audio.dylib" | grep -E "nativeStart|nativeRead|nativeStop" || true

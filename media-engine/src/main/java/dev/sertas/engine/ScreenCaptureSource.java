@@ -1,19 +1,22 @@
 package dev.sertas.engine;
 
+import dev.onvoid.webrtc.media.video.CustomVideoSource;
 import dev.onvoid.webrtc.media.video.VideoDesktopSource;
+import dev.onvoid.webrtc.media.video.VideoTrackSource;
 import dev.onvoid.webrtc.media.video.desktop.DesktopSource;
 import dev.onvoid.webrtc.media.video.desktop.ScreenCapturer;
 
 import java.util.List;
 
 /**
- * Демонстрация экрана через встроенный {@link VideoDesktopSource} (libwebrtc
- * DesktopCapturer; на macOS — ScreenCaptureKit под капотом).
+ * Демонстрация экрана. По умолчанию — нативный захват ({@link MacScreenVideoCapture},
+ * ScreenCaptureKit) для высокого FPS; если dylib недоступен — встроенный
+ * {@link VideoDesktopSource} (libwebrtc DesktopCapturer, медленнее).
  *
  * <p>Источник создаётся пустым при входе в звонок — чтобы видео-m-line
  * согласовался сразу, без renegotiation. Захват начинается позже: выбрать экран
  * через {@link #select} и {@link #start}. Системный звук демонстрации — отдельный
- * трек (Фаза 3), здесь только видео.
+ * трек, здесь только видео.
  */
 public final class ScreenCaptureSource {
 
@@ -34,7 +37,26 @@ public final class ScreenCaptureSource {
         }
     }
 
-    private final VideoDesktopSource source = new VideoDesktopSource();
+    private final boolean useNative = MacScreenVideoCapture.isAvailable();
+
+    // Нативный путь: кадры толкаются в custom; иначе захватывает builtin.
+    private final CustomVideoSource custom;
+    private final MacScreenVideoCapture nativeCap;
+    private final VideoDesktopSource builtin;
+
+    private Quality quality = Quality.BALANCED;
+
+    public ScreenCaptureSource() {
+        if (useNative) {
+            custom = new CustomVideoSource();
+            nativeCap = new MacScreenVideoCapture();
+            builtin = null;
+        } else {
+            custom = null;
+            nativeCap = null;
+            builtin = new VideoDesktopSource();
+        }
+    }
 
     /** Доступные экраны. На macOS требует разрешения Screen Recording (TCC). */
     public static List<DesktopSource> screens() {
@@ -48,25 +70,46 @@ public final class ScreenCaptureSource {
 
     /** Выбрать экран и качество. Вызывать до {@link #start}. */
     public void select(long screenId, Quality quality) {
-        source.setSourceId(screenId, false); // false = экран (true было бы окно)
-        source.setFrameRate(quality.fps);
-        source.setMaxFrameSize(quality.maxWidth, quality.maxHeight);
+        this.quality = quality;
+        if (!useNative) {
+            builtin.setSourceId(screenId, false); // false = экран (true было бы окно)
+            builtin.setFrameRate(quality.fps);
+            builtin.setMaxFrameSize(quality.maxWidth, quality.maxHeight);
+        }
+        // Нативный захват берёт основной экран; разрешение/FPS применяются в start().
     }
 
     /** Источник для создания видео-трека (создаётся при входе в звонок). */
-    public VideoDesktopSource source() {
-        return source;
+    public VideoTrackSource source() {
+        return useNative ? custom : builtin;
+    }
+
+    /** true — используется нативный (ScreenCaptureKit) захват. */
+    public boolean isNative() {
+        return useNative;
     }
 
     public void start() {
-        source.start();
+        if (useNative) {
+            nativeCap.start(custom, quality.maxWidth, quality.maxHeight, quality.fps);
+        } else {
+            builtin.start();
+        }
     }
 
     public void stop() {
-        source.stop();
+        if (useNative) {
+            nativeCap.stop();
+        } else {
+            builtin.stop();
+        }
     }
 
     public void dispose() {
-        source.dispose();
+        if (useNative) {
+            custom.dispose();
+        } else {
+            builtin.dispose();
+        }
     }
 }
