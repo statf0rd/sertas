@@ -27,12 +27,16 @@ public final class WinSystemAudioCapture implements SystemAudioProvider {
 
     private static boolean load() {
         String path = System.getProperty("sertas.audio.dll");
+        System.err.println("[demo] WASAPI dll prop=" + path);
         if (path == null || path.isBlank()) {
+            System.err.println("[demo] WASAPI dll НЕ задан -Dsertas.audio.dll → нативный захват недоступен");
             return false;
         }
         try {
             // Путь в бандле относительный (lib\...); лаунчер делает cd в корень — резолвим в абсолютный.
-            System.load(new java.io.File(path).getAbsolutePath());
+            String abs = new java.io.File(path).getAbsolutePath();
+            System.load(abs);
+            System.err.println("[demo] WASAPI dll loaded=" + abs);
             return true;
         } catch (UnsatisfiedLinkError e) {
             System.err.println("sertas: не удалось загрузить " + path + ": " + e.getMessage());

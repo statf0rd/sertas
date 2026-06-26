@@ -178,7 +178,13 @@ public final class PeerSession {
     }
 
     public void close() {
+        // Метка времени освобождения нативного PeerConnection (и его remote-треков).
+        // Если t здесь МЕНЬШЕ, чем t у «removeSink CALLING» в VideoTile — это и есть
+        // use-after-free (sink снимается с уже освобождённого трека).
+        System.err.println("[life] PeerSession.close thread=" + Thread.currentThread().getName()
+                + " t=" + System.nanoTime());
         pc.close();
+        System.err.println("[life] PeerSession.close DONE t=" + System.nanoTime());
     }
 
     private void createAnswer() {

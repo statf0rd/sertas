@@ -117,10 +117,20 @@ public final class VideoTile {
 
     public void dispose() {
         timer.stop();
+        int id = System.identityHashCode(track);
+        // Диагностика use-after-free: если в логе есть «removeSink CALLING» без
+        // парной «DONE» как последняя строка перед падением — нативный трек уже
+        // освобождён (pc.close/factory.dispose) и removeSink бьёт по висячему
+        // указателю. Намеренно НЕ читаем track.getState() — оно само разыменует
+        // тот же handle и крашнет процесс раньше времени.
+        System.err.println("[life] VideoTile.dispose track=" + id
+                + " thread=" + Thread.currentThread().getName() + " t=" + System.nanoTime());
         try {
+            System.err.println("[life] removeSink CALLING track=" + id);
             track.removeSink(sink);
+            System.err.println("[life] removeSink DONE track=" + id);
         } catch (RuntimeException ignored) {
-            // трек уже освобождён
+            // трек уже освобождён (нативный SIGSEGV этим НЕ ловится — см. лог выше)
         }
     }
 }

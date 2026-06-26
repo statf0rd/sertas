@@ -84,6 +84,13 @@ public final class CallController implements MeshListener {
 
     /** Создать движок, треки (микрофон + экран) и войти в комнату. */
     public void join(String url, String room, String name) {
+        // Диагностика окружения: demoaudio=off здесь + работающее видео + ноль
+        // [demo]-строк = демо-звук выключен фича-флагом (упакованный лаунчер не
+        // передаёт -Dsertas.demoaudio=on). os/audio.dll — для Windows-провайдера.
+        System.err.println("[demo] join demoaudio=" + System.getProperty("sertas.demoaudio", "off")
+                + " mixer=" + System.getProperty("sertas.mixer", "off")
+                + " os=" + System.getProperty("os.name")
+                + " audio.dll=" + System.getProperty("sertas.audio.dll", "unset"));
         engine = new WebRtcEngine();
         mesh = new MeshCoordinator(engine, this);
 
@@ -225,6 +232,8 @@ public final class CallController implements MeshListener {
     }
 
     public void leave() {
+        System.err.println("[life] leave STAGE=entry thread=" + Thread.currentThread().getName()
+                + " t=" + System.nanoTime());
         stopScreenShare();
         if (screenAudio != null) {
             screenAudio.stop();
@@ -238,10 +247,12 @@ public final class CallController implements MeshListener {
             demoPlayer = null;
         }
         if (mesh != null) {
+            System.err.println("[life] leave STAGE=mesh.stop t=" + System.nanoTime());
             mesh.stop();
             mesh = null;
         }
         if (engine != null) {
+            System.err.println("[life] leave STAGE=engine.dispose t=" + System.nanoTime());
             engine.dispose();
             engine = null;
         }
@@ -253,6 +264,10 @@ public final class CallController implements MeshListener {
         screen = null;
         audioMixer = null;
         Platform.runLater(() -> {
+            // ВАЖНО: этот runLater исполняется ПОСЛЕ синхронных mesh.stop()/engine.dispose()
+            // выше (leave() сам на FX-потоке) — нативные треки уже освобождены здесь.
+            System.err.println("[life] leave STAGE=tiles.dispose-deferred tiles=" + tiles.size()
+                    + " t=" + System.nanoTime());
             tiles.values().forEach(VideoTile::dispose);
             tiles.clear();
             videoPane.getChildren().clear();
@@ -286,6 +301,8 @@ public final class CallController implements MeshListener {
             }
             VideoTile tile = tiles.remove(peerId);
             if (tile != null) {
+                System.err.println("[life] onPeerLeft→dispose peer=" + peerId
+                        + " thread=" + Thread.currentThread().getName() + " t=" + System.nanoTime());
                 videoPane.getChildren().remove(tile.node());
                 tile.dispose();
             }
@@ -357,6 +374,8 @@ public final class CallController implements MeshListener {
                 return;
             }
             VideoTile old = tiles.remove(peerId);
+            System.err.println("[life] onRemoteTrack peer=" + peerId + " kind=" + track.getKind()
+                    + " replacingOld=" + (old != null) + " t=" + System.nanoTime());
             if (old != null) {
                 videoPane.getChildren().remove(old.node());
                 old.dispose();

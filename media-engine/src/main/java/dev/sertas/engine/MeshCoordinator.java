@@ -78,6 +78,8 @@ public final class MeshCoordinator implements SignalingListener {
     }
 
     public void stop() {
+        System.err.println("[life] mesh.stop thread=" + Thread.currentThread().getName()
+                + " t=" + System.nanoTime());
         sessions.values().forEach(PeerSession::close);
         sessions.clear();
         signaling.close();
@@ -101,6 +103,11 @@ public final class MeshCoordinator implements SignalingListener {
             listener.onPeerJoined(pj.id(), pj.name());
             onPeerKnown(pj.id());
         } else if (msg instanceof PeerLeft pl) {
+            // pc.close() здесь — на WS-потоке; removeSink тайла откладывается на FX
+            // (listener.onPeerLeft → Platform.runLater). Гонка двух потоков по одному
+            // нативному треку — потенциальный use-after-free.
+            System.err.println("[life] mesh PeerLeft peer=" + pl.id() + " thread="
+                    + Thread.currentThread().getName() + " t=" + System.nanoTime());
             PeerSession s = sessions.remove(pl.id());
             if (s != null) {
                 s.close();
