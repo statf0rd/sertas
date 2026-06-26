@@ -34,3 +34,10 @@ jobs:
           name: sertas-capture-dll
           path: native-capture/windows/build/Release/sertas_capture.dll
           if-no-files-found: error
+
+      - name: Upload audio DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sertas-audio-dll
+          path: native-capture/windows/build/Release/sertas_audio.dll
+          if-no-files-found: error

@@ -15,3 +15,13 @@ target_include_directories(sertas_capture PRIVATE
     "$ENV{JAVA_HOME}/include/win32")
 
 target_link_libraries(sertas_capture PRIVATE d3d11 dxgi)
+
+# Захват системного звука демо через WASAPI loopback (sertas_audio.dll).
+add_library(sertas_audio SHARED SertasAudioWin.cpp)
+set_target_properties(sertas_audio PROPERTIES PREFIX "") # sertas_audio.dll
+
+target_include_directories(sertas_audio PRIVATE
+    "$ENV{JAVA_HOME}/include"
+    "$ENV{JAVA_HOME}/include/win32")
+
+target_link_libraries(sertas_audio PRIVATE ole32)

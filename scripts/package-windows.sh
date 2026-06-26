@@ -27,15 +27,6 @@ for art in "jackson-databind-$JACKSON" "jackson-core-$JACKSON" "jackson-annotati
   cp "$f" "$STAGE/lib/"
 done
 
-# Нативный WASAPI-захват демо-звука (собирается на Windows: build-windows-audio-dll.bat).
-DLL="$ROOT/build/native-win/sertas_audio.dll"
-if [ -f "$DLL" ]; then
-  cp "$DLL" "$STAGE/lib/"
-  echo "  + sertas_audio.dll (WASAPI loopback)"
-else
-  echo "  ! sertas_audio.dll нет — звук демо на Windows будет недоступен (соберите scripts/build-windows-audio-dll.bat)"
-fi
-
 echo "[3/5] downloading Windows native jars"
 curl -fsSL "$MC/dev/onvoid/webrtc/webrtc-java/$WEBRTC/webrtc-java-$WEBRTC-windows-x86_64.jar" -o "$STAGE/lib/webrtc-java-$WEBRTC-windows-x86_64.jar"
 for m in base graphics controls; do
@@ -52,6 +43,15 @@ else
   echo "  ВНИМАНИЕ: DLL не скачана (нет успешного CI-рана?) — бандл со встроенным захватом (низкий FPS)"
 fi
 
+echo "[3c/5] native audio DLL (WASAPI loopback, из CI-артефакта)"
+AUDIO_DLL_ARG=""
+if [ -n "${RID:-}" ] && gh run download "$RID" -n sertas-audio-dll -D "$STAGE/lib" 2>/dev/null; then
+  AUDIO_DLL_ARG='-Dsertas.audio.dll="lib\sertas_audio.dll"'
+  echo "  ok: sertas_audio.dll (CI run $RID)"
+else
+  echo "  ! sertas_audio.dll не скачана — звук демо на Windows недоступен"
+fi
+
 echo "[4/5] downloading Windows JRE (Temurin 21)"
 curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse" -o /tmp/jre-win.zip
 rm -rf /tmp/jre-win-extract; mkdir -p /tmp/jre-win-extract
@@ -65,8 +65,6 @@ SERVER_URL="${SERTAS_SERVER:-ws://localhost:8080/signal}"
 TURN_ARG=""
 [ -n "${SERTAS_TURN:-}" ] && TURN_ARG="-Dsertas.turn=\"${SERTAS_TURN}\""
 JVM_EXTRA="${SERTAS_JVM_EXTRA:-}"  # доп. JVM-флаги (напр. -Dsertas.mixer=off)
-AUDIO_DLL_ARG=""
-[ -f "$STAGE/lib/sertas_audio.dll" ] && AUDIO_DLL_ARG='-Dsertas.audio.dll="%~dp0lib\sertas_audio.dll"'
 cat > "$STAGE/Запустить sertas.bat" <<BAT
 @echo off
 chcp 65001 >nul

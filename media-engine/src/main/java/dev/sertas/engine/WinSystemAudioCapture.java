@@ -31,7 +31,8 @@ public final class WinSystemAudioCapture implements SystemAudioProvider {
             return false;
         }
         try {
-            System.load(path);
+            // Путь в бандле относительный (lib\...); лаунчер делает cd в корень — резолвим в абсолютный.
+            System.load(new java.io.File(path).getAbsolutePath());
             return true;
         } catch (UnsatisfiedLinkError e) {
             System.err.println("sertas: не удалось загрузить " + path + ": " + e.getMessage());
