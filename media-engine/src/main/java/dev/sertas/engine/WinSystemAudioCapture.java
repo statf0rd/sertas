@@ -50,10 +50,13 @@ public final class WinSystemAudioCapture implements SystemAudioProvider {
         if (running) {
             return;
         }
-        if (nativeStart() != 1) {
+        int r = nativeStart();
+        System.err.println("[demo] WASAPI nativeStart=" + r);
+        if (r != 1) {
             throw new IllegalStateException("WASAPI loopback: не удалось начать захват");
         }
         sampleRate = nativeSampleRate();
+        System.err.println("[demo] WASAPI sampleRate=" + sampleRate);
         running = true;
         reader = new Thread(() -> readLoop(sink), "win-system-audio");
         reader.setDaemon(true);

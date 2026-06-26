@@ -23,6 +23,7 @@ public final class JavaSoundDemoPlayer {
     private volatile boolean running;
     private volatile boolean failed;
     private Thread thread;
+    private long dbgOffer; // диагностика
 
     /** Принять кадр S16LE (из {@code AudioTrackSink.onData}); открывает линию при первом кадре. */
     public void offer(byte[] s16, int sampleRate, int channels) {
@@ -34,6 +35,10 @@ public final class JavaSoundDemoPlayer {
             if (line == null) {
                 return;
             }
+        }
+        if (dbgOffer++ == 0 || dbgOffer % 200 == 0) {
+            System.err.println("[demo] playout получил кадр #" + dbgOffer + " rate=" + sampleRate
+                    + " channels=" + channels + " bytes=" + s16.length);
         }
         byte[] copy = s16.clone(); // буфер webrtc переиспользуется
         if (!queue.offer(copy)) {
@@ -56,6 +61,7 @@ public final class JavaSoundDemoPlayer {
             thread = new Thread(this::drain, "demo-audio-playout");
             thread.setDaemon(true);
             thread.start();
+            System.err.println("[demo] playout: линия открыта " + sampleRate + "Hz " + channels + "ch");
         } catch (Exception e) {
             failed = true;
             System.err.println("sertas: нет аудио-вывода для звука демо: " + e.getMessage());

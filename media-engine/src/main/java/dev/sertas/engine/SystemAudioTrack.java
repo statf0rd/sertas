@@ -57,6 +57,7 @@ public final class SystemAudioTrack implements PcmSink {
     private volatile int framesPerBlock = 480;
 
     private SystemAudioProvider provider;
+    private long dbgPcm, dbgData, dbgSilence; // диагностика
 
     public SystemAudioTrack(WebRtcEngine engine) {
         this.track = engine.createAudioTrack(LABEL, source);
@@ -102,6 +103,10 @@ public final class SystemAudioTrack implements PcmSink {
             sampleRate = sourceSampleRate;
             framesPerBlock = sourceSampleRate / 100;
         }
+        if (dbgPcm++ == 0 || dbgPcm % 200 == 0) {
+            System.err.println("[demo] capture onPcm #" + dbgPcm + " rate=" + sourceSampleRate
+                    + " frames=" + left.length);
+        }
         for (Pcm10msReframer.Block b : reframer.offer(left, right)) {
             if (pendingCount.get() < MAX_PENDING) {
                 pending.add(b);
@@ -120,9 +125,15 @@ public final class SystemAudioTrack implements PcmSink {
                 pendingCount.decrementAndGet();
                 pcm = AudioFormatConverter.float32PlanarToS16Interleaved(b.left(), b.right());
                 frames = b.left().length;
+                dbgData++;
             } else {
                 frames = framesPerBlock;
                 pcm = AudioFormatConverter.silenceFrame(frames, CHANNELS);
+                dbgSilence++;
+            }
+            if ((dbgData + dbgSilence) % 500 == 1) {
+                System.err.println("[demo] push: data=" + dbgData + " silence=" + dbgSilence
+                        + " rate=" + sampleRate);
             }
             source.pushAudio(pcm, BITS_PER_SAMPLE, sampleRate, CHANNELS, frames);
         } catch (RuntimeException ignored) {

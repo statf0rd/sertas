@@ -48,7 +48,9 @@ public final class MacSystemAudioCapture implements SystemAudioProvider {
         if (running) {
             return;
         }
-        if (nativeStart() != 1) {
+        int r = nativeStart();
+        System.err.println("[demo] ScreenCaptureKit nativeStart=" + r);
+        if (r != 1) {
             throw new IllegalStateException(
                     "ScreenCaptureKit: не удалось начать захват (нет разрешения Screen Recording?)");
         }

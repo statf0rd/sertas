@@ -47,9 +47,12 @@ public final class ScreenAudioConnection {
                                  Consumer<RTCRtpTransceiver> onRemoteTrack,
                                  UnaryOperator<String> localSdpTransform) {
         this.channel = channel;
+        System.err.println("[demo] ScreenAudioConnection создан (initiator=" + initiator
+                + ", localTrack=" + (localTrack != null) + ")");
         this.session = new PeerSession(audioEngine, new PeerSession.Signals() {
             @Override
             public void onLocalDescription(RTCSessionDescription d) {
+                System.err.println("[demo] saConn → " + (d.sdpType == RTCSdpType.OFFER ? "offer" : "answer"));
                 send(d.sdpType == RTCSdpType.OFFER ? 'O' : 'A', d.sdp);
             }
 
@@ -59,8 +62,19 @@ public final class ScreenAudioConnection {
             }
 
             @Override
+            public void onConnectionState(dev.onvoid.webrtc.RTCPeerConnectionState state) {
+                System.err.println("[demo] saConn state=" + state);
+            }
+
+            @Override
             public void onTrack(RTCRtpTransceiver t) {
+                System.err.println("[demo] saConn ← удалённый screen-audio трек прибыл");
                 onRemoteTrack.accept(t);
+            }
+
+            @Override
+            public void onError(Throwable e) {
+                System.err.println("[demo] saConn error: " + e);
             }
         }, null, localSdpTransform);
 
@@ -87,6 +101,7 @@ public final class ScreenAudioConnection {
 
     private void maybeOffer(boolean initiator) {
         if (initiator && channel.getState() == RTCDataChannelState.OPEN && offered.compareAndSet(false, true)) {
+            System.err.println("[demo] control-канал OPEN → создаю offer звука демо");
             session.createOffer();
         }
     }
@@ -109,6 +124,9 @@ public final class ScreenAudioConnection {
         }
         char kind = s.charAt(0);
         String payload = new String(Base64.getDecoder().decode(s.substring(1)), StandardCharsets.UTF_8);
+        if (kind == 'O' || kind == 'A') {
+            System.err.println("[demo] saConn ← " + (kind == 'O' ? "offer" : "answer"));
+        }
         switch (kind) {
             case 'O' -> session.onRemoteDescription(new RTCSessionDescription(RTCSdpType.OFFER, payload));
             case 'A' -> session.onRemoteDescription(new RTCSessionDescription(RTCSdpType.ANSWER, payload));

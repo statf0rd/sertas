@@ -114,6 +114,7 @@ public final class CallController implements MeshListener {
             audioEngine = WebRtcEngine.headless();
             screenAudio = new SystemAudioTrack(audioEngine);
             demoPlayer = new JavaSoundDemoPlayer();
+            System.err.println("[demo] dual-factory звука демо включён (headless audioEngine)");
         }
 
         Platform.runLater(() -> {
@@ -183,6 +184,8 @@ public final class CallController implements MeshListener {
             return;
         }
         SystemAudioProvider provider = nativeSystemAudioProvider();
+        System.err.println("[demo] startScreenAudio: provider=" + (provider == null ? "НЕТ (нативный захват недоступен)"
+                : provider.getClass().getSimpleName()) + ", соединений=" + screenAudioConns.size());
         if (provider == null) {
             onError(new IllegalStateException(
                     "нативный захват звука демо недоступен на этой платформе "
@@ -192,6 +195,7 @@ public final class CallController implements MeshListener {
         try {
             screenAudio.start(provider);
             screenAudioOn = true;
+            System.err.println("[demo] захват звука демо запущен");
         } catch (RuntimeException e) {
             onError(e);
         }
@@ -312,6 +316,7 @@ public final class CallController implements MeshListener {
         if (audioEngine == null || screenAudio == null) {
             return; // звук демо выключен
         }
+        System.err.println("[demo] onControlChannel peer=" + peerId + " initiator=" + initiator);
         ScreenAudioConnection conn = new ScreenAudioConnection(
                 audioEngine, channel, initiator, screenAudio.track(),
                 this::onRemoteScreenAudio, SCREEN_AUDIO_MUSIC);
