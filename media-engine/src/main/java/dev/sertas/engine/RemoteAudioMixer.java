@@ -32,6 +32,11 @@ public final class RemoteAudioMixer implements AudioSource {
     private final Map<String, Attached> attached = new HashMap<>(); // только FX-поток (attach/detach)
     private float[] scratch = new float[0];   // только аудио-поток воспроизведения
 
+    // Диагностика (-Dsertas.mixer=on): логируем первое срабатывание, чтобы понять
+    // на железе, тянется ли наш playout и в каком формате приходит удалённый звук.
+    private volatile boolean loggedPlayout = false;
+    private final java.util.Set<String> loggedSinks = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** Вид удалённого трека по его id (метка трека отправителя доходит через a=msid). */
     public static Kind kindOf(MediaStreamTrack track) {
         return SystemAudioTrack.LABEL.equals(track.getId()) ? Kind.DEMO : Kind.VOICE;
@@ -50,6 +55,10 @@ public final class RemoteAudioMixer implements AudioSource {
         }
         mixer.addSource(id);
         AudioTrackSink sink = (data, bitsPerSample, sampleRate, channels, frames) -> {
+            if (loggedSinks.add(id)) {
+                System.err.println("[mixer] sink first onData: source=" + id + " bitsPerSample="
+                        + bitsPerSample + " rate=" + sampleRate + " channels=" + channels + " frames=" + frames);
+            }
             // Удалённый Opus декодируется в 48к; иные частоты пока не ресэмплим.
             if (bitsPerSample == 16 && sampleRate == 48_000 && frames > 0) {
                 mixer.submit(id, AudioFormatConverter.s16InterleavedToFloatStereo(data, frames, channels));
@@ -107,6 +116,19 @@ public final class RemoteAudioMixer implements AudioSource {
             scratch = new float[nSamples * 2];
         }
         pull(scratch, nSamples);
+        if (!loggedPlayout) {
+            loggedPlayout = true;
+            boolean silent = true;
+            for (int i = 0; i < nSamples * 2; i++) {
+                if (scratch[i] != 0f) {
+                    silent = false;
+                    break;
+                }
+            }
+            System.err.println("[mixer] onPlaybackData first call: nSamples=" + nSamples
+                    + " bytesPerSample=" + nBytesPerSample + " channels=" + nChannels
+                    + " rate=" + samplesPerSec + " mixSilent=" + silent);
+        }
         // Пишем S16 прямо в буфер ADM — без аллокации на аудио-потоке.
         AudioFormatConverter.floatStereoToS16InterleavedInto(audioSamples, scratch, nSamples, nChannels);
         return nSamples;
