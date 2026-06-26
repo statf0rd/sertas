@@ -59,12 +59,21 @@ public final class ScreenCaptureSource {
     }
 
     private static ScreenVideoCapture pickNative() {
+        // Принудительно встроенный (стабильный, медленнее) захват, если нативный
+        // мудрит: -Dsertas.screencap=builtin.
+        if ("builtin".equalsIgnoreCase(System.getProperty("sertas.screencap"))) {
+            System.err.println("[screencap] forced builtin (VideoDesktopSource)");
+            return null;
+        }
         if (MacScreenVideoCapture.isAvailable()) {
+            System.err.println("[screencap] native ScreenCaptureKit (macOS)");
             return new MacScreenVideoCapture();
         }
         if (WinScreenVideoCapture.isAvailable()) {
+            System.err.println("[screencap] native DXGI (Windows)");
             return new WinScreenVideoCapture();
         }
+        System.err.println("[screencap] builtin (нативный недоступен)");
         return null;
     }
 

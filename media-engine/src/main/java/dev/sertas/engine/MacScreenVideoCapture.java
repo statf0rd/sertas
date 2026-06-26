@@ -58,7 +58,9 @@ public final class MacScreenVideoCapture implements ScreenVideoCapture {
         if (running) {
             return;
         }
-        if (nativeStart(width, height, fps) != 1) {
+        int r = nativeStart(width, height, fps);
+        System.err.println("[screencap] native nativeStart=" + r + " (" + width + "x" + height + "@" + fps + ")");
+        if (r != 1) {
             throw new IllegalStateException(
                     "ScreenCaptureKit: не удалось начать захват экрана (нет разрешения Screen Recording?)");
         }
@@ -105,7 +107,9 @@ public final class MacScreenVideoCapture implements ScreenVideoCapture {
                 VideoFrame frame = new VideoFrame(i420, System.nanoTime());
                 sink.pushFrame(frame);
                 frame.release();
-                framesPushed++;
+                if (framesPushed++ == 0 || framesPushed % 150 == 0) {
+                    System.err.println("[screencap] native кадр #" + framesPushed + " " + fw + "x" + fh);
+                }
             } catch (Exception ignored) {
                 // битый кадр — пропускаем
             }
