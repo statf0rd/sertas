@@ -37,7 +37,7 @@ echo "[3b/5] native capture DLL (DXGI Desktop Duplication, из CI-артефа�
 CAP_ARG=""
 RID=$(gh run list --workflow windows-capture.yml --status success --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
 if [ -n "${RID:-}" ] && gh run download "$RID" -n sertas-capture-dll -D "$STAGE/lib" 2>/dev/null; then
-  CAP_ARG='-Dsertas.capture.dll="lib\sertas_capture.dll"'
+  CAP_ARG='-Dsertas.capture.dll="%~dp0lib\sertas_capture.dll"'
   echo "  ok: sertas_capture.dll (CI run $RID)"
 else
   echo "  ВНИМАНИЕ: DLL не скачана (нет успешного CI-рана?) — бандл со встроенным захватом (низкий FPS)"
@@ -46,7 +46,7 @@ fi
 echo "[3c/5] native audio DLL (WASAPI loopback, из CI-артефакта)"
 AUDIO_DLL_ARG=""
 if [ -n "${RID:-}" ] && gh run download "$RID" -n sertas-audio-dll -D "$STAGE/lib" 2>/dev/null; then
-  AUDIO_DLL_ARG='-Dsertas.audio.dll="lib\sertas_audio.dll"'
+  AUDIO_DLL_ARG='-Dsertas.audio.dll="%~dp0lib\sertas_audio.dll"'
   echo "  ok: sertas_audio.dll (CI run $RID)"
 else
   echo "  ! sertas_audio.dll не скачана — звук демо на Windows недоступен"
