@@ -23,3 +23,11 @@ dependencies {
     implementation(project(":media"))
     implementation(project(":media-engine"))
 }
+
+// Проброс -Dsertas.* из gradle-вызова в приложение, напр.:
+//   ./gradlew :app-client:run -Dsertas.demoaudio=on
+tasks.named<JavaExec>("run") {
+    listOf("sertas.demoaudio", "sertas.mixer", "sertas.server", "sertas.turn").forEach { p ->
+        System.getProperty(p)?.let { systemProperty(p, it) }
+    }
+}
