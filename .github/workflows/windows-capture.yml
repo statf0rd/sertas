@@ -1,0 +1,36 @@
+name: windows-capture
+
+# Собирает нативную DLL захвата экрана (DXGI Desktop Duplication) на windows-runner
+# с MSVC. Локально (macOS) собрать нельзя. Артефакт скачивается scripts/package-windows.sh.
+on:
+  push:
+    paths:
+      - 'native-capture/windows/**'
+      - '.github/workflows/windows-capture.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configure (CMake + MSVC x64)
+        working-directory: native-capture/windows
+        run: cmake -B build -A x64
+
+      - name: Build (Release)
+        working-directory: native-capture/windows
+        run: cmake --build build --config Release
+
+      - name: Upload DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sertas-capture-dll
+          path: native-capture/windows/build/Release/sertas_capture.dll
+          if-no-files-found: error

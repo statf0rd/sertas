@@ -37,25 +37,35 @@ public final class ScreenCaptureSource {
         }
     }
 
-    private final boolean useNative = MacScreenVideoCapture.isAvailable();
-
-    // Нативный путь: кадры толкаются в custom; иначе захватывает builtin.
+    // Нативный путь (macOS — ScreenCaptureKit, Windows — DXGI): кадры толкаются
+    // в custom; иначе захватывает встроенный builtin.
+    private final ScreenVideoCapture nativeCap;
+    private final boolean useNative;
     private final CustomVideoSource custom;
-    private final MacScreenVideoCapture nativeCap;
     private final VideoDesktopSource builtin;
 
     private Quality quality = Quality.BALANCED;
 
     public ScreenCaptureSource() {
+        nativeCap = pickNative();
+        useNative = nativeCap != null;
         if (useNative) {
             custom = new CustomVideoSource();
-            nativeCap = new MacScreenVideoCapture();
             builtin = null;
         } else {
             custom = null;
-            nativeCap = null;
             builtin = new VideoDesktopSource();
         }
+    }
+
+    private static ScreenVideoCapture pickNative() {
+        if (MacScreenVideoCapture.isAvailable()) {
+            return new MacScreenVideoCapture();
+        }
+        if (WinScreenVideoCapture.isAvailable()) {
+            return new WinScreenVideoCapture();
+        }
+        return null;
     }
 
     /** Доступные экраны. На macOS требует разрешения Screen Recording (TCC). */

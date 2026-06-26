@@ -7,24 +7,26 @@ import dev.onvoid.webrtc.media.video.VideoBufferConverter;
 import dev.onvoid.webrtc.media.video.VideoFrame;
 
 /**
- * Нативный захват экрана (видео) на macOS через ScreenCaptureKit (`.dylib` + JNI).
- * Pull-модель: Java-поток тянет {@link #nativeRead} последний NV12-кадр, конвертит
- * NV12 → I420 и пушит в {@link CustomVideoSource}. Высокий FPS вместо медленного
+ * Нативный захват экрана (видео) на Windows через DXGI Desktop Duplication (`.dll` + JNI).
+ * Pull-модель: Java-поток тянет {@link #nativeRead} последний BGRA-кадр, конвертит
+ * BGRA → I420 и пушит в {@link CustomVideoSource}. Высокий FPS вместо медленного
  * встроенного DesktopCapturer.
  *
- * <p>Та же dylib, что и у {@link MacSystemAudioCapture} (свойство
- * {@code sertas.audio.dylib}); грузится один раз на оба класса.
+ * <p>DLL грузится из пути в системном свойстве {@code sertas.capture.dll} (в бандле —
+ * выставляется лаунчером). FourCC по умолчанию {@code ARGB} (= BGRA в памяти у
+ * libyuv); если цвета неверны — переопределить через {@code -Dsertas.capture.fourcc=BGRA}.
  */
-public final class MacScreenVideoCapture implements ScreenVideoCapture {
+public final class WinScreenVideoCapture implements ScreenVideoCapture {
 
     private static final boolean LOADED = load();
+    private static final FourCC FOURCC = resolveFourCc();
 
     private volatile boolean running;
     private volatile long framesPushed;
     private Thread reader;
 
     private static boolean load() {
-        String path = System.getProperty("sertas.audio.dylib");
+        String path = System.getProperty("sertas.capture.dll");
         if (path == null || path.isBlank()) {
             return false;
         }
@@ -32,38 +34,37 @@ public final class MacScreenVideoCapture implements ScreenVideoCapture {
             System.load(path);
             return true;
         } catch (UnsatisfiedLinkError e) {
-            // Уже загружена (например, MacSystemAudioCapture первым) — это успех.
-            if (e.getMessage() != null && e.getMessage().contains("already loaded")) {
-                return true;
-            }
             System.err.println("sertas: не удалось загрузить " + path + ": " + e.getMessage());
             return false;
         }
     }
 
-    /** Доступен ли нативный захват экрана (dylib загружен). */
+    private static FourCC resolveFourCc() {
+        return "BGRA".equalsIgnoreCase(System.getProperty("sertas.capture.fourcc", "ARGB"))
+                ? FourCC.BGRA
+                : FourCC.ARGB;
+    }
+
+    /** Доступен ли нативный захват экрана (dll загружена). */
     public static boolean isAvailable() {
         return LOADED;
     }
 
-    /** Сколько кадров протолкнуто в источник (диагностика «идёт ли захват»). */
     @Override
     public long framesPushed() {
         return framesPushed;
     }
 
-    /** Начать захват экрана {@code width}×{@code height} @ {@code fps} в {@code sink}. */
     @Override
     public synchronized void start(CustomVideoSource sink, int width, int height, int fps) {
         if (running) {
             return;
         }
         if (nativeStart(width, height, fps) != 1) {
-            throw new IllegalStateException(
-                    "ScreenCaptureKit: не удалось начать захват экрана (нет разрешения Screen Recording?)");
+            throw new IllegalStateException("DXGI: не удалось начать захват экрана");
         }
         running = true;
-        reader = new Thread(() -> readLoop(sink, width, height, fps), "mac-screen-video");
+        reader = new Thread(() -> readLoop(sink, width, height, fps), "win-screen-video");
         reader.setDaemon(true);
         reader.start();
     }
@@ -80,11 +81,11 @@ public final class MacScreenVideoCapture implements ScreenVideoCapture {
     }
 
     private void readLoop(CustomVideoSource sink, int maxW, int maxH, int fps) {
-        byte[] nv12 = new byte[maxW * maxH * 3 / 2];
+        byte[] bgra = new byte[maxW * maxH * 4];
         int[] dims = new int[2];
-        long sleepMs = Math.max(1, 1000L / Math.max(1, fps) / 2); // опрашиваем чаще кадра
+        long sleepMs = Math.max(1, 1000L / Math.max(1, fps) / 2);
         while (running) {
-            int n = nativeRead(nv12, nv12.length, dims);
+            int n = nativeRead(bgra, bgra.length, dims);
             if (n <= 0) {
                 try {
                     Thread.sleep(sleepMs);
@@ -101,7 +102,7 @@ public final class MacScreenVideoCapture implements ScreenVideoCapture {
             }
             try {
                 NativeI420Buffer i420 = NativeI420Buffer.allocate(fw, fh);
-                VideoBufferConverter.convertToI420(nv12, i420, FourCC.NV12);
+                VideoBufferConverter.convertToI420(bgra, i420, FOURCC);
                 VideoFrame frame = new VideoFrame(i420, System.nanoTime());
                 sink.pushFrame(frame);
                 frame.release();
@@ -114,7 +115,7 @@ public final class MacScreenVideoCapture implements ScreenVideoCapture {
 
     private static native int nativeStart(int width, int height, int fps);
 
-    private static native int nativeRead(byte[] nv12, int maxBytes, int[] dims);
+    private static native int nativeRead(byte[] bgra, int maxBytes, int[] dims);
 
     private static native void nativeStop();
 }
