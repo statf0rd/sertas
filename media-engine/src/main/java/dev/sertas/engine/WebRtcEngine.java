@@ -5,6 +5,7 @@ import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCConfiguration;
 import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCPeerConnection;
+import dev.onvoid.webrtc.media.audio.AudioDeviceModule;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase;
 import dev.onvoid.webrtc.media.audio.AudioOptions;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
@@ -24,13 +25,15 @@ import java.util.List;
 public final class WebRtcEngine {
 
     private final PeerConnectionFactory factory;
+    private final AudioDeviceModuleBase adm;
 
     /** Боевой движок: фабрика с реальным аудио-устройством (микрофон/динамики). */
     public WebRtcEngine() {
-        this.factory = new PeerConnectionFactory();
+        this(new AudioDeviceModule());
     }
 
     private WebRtcEngine(AudioDeviceModuleBase adm) {
+        this.adm = adm;
         this.factory = new PeerConnectionFactory(adm);
     }
 
@@ -41,6 +44,15 @@ public final class WebRtcEngine {
 
     public PeerConnectionFactory factory() {
         return factory;
+    }
+
+    /**
+     * Аудио-модуль устройства. Нужен для {@code setAudioSource} — подачи
+     * собственного микса (см. {@code RemoteAudioMixer}) в воспроизведение мимо
+     * штатного микшера libwebrtc.
+     */
+    public AudioDeviceModuleBase audioDeviceModule() {
+        return adm;
     }
 
     public RTCPeerConnection createPeerConnection(PeerConnectionObserver observer) {
@@ -97,5 +109,6 @@ public final class WebRtcEngine {
 
     public void dispose() {
         factory.dispose();
+        adm.dispose();
     }
 }

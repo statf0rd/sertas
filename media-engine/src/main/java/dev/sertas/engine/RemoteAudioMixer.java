@@ -1,8 +1,11 @@
 package dev.sertas.engine;
 
 import dev.onvoid.webrtc.media.MediaStreamTrack;
+import dev.onvoid.webrtc.media.audio.AudioSource;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.sertas.media.AudioFormatConverter;
+
+import java.util.Arrays;
 
 /**
  * Сторона слушателя: принимает удалённые аудио-треки, различает источники
@@ -10,15 +13,17 @@ import dev.sertas.media.AudioFormatConverter;
  * независимой громкостью на источник. Вход каждого трека — {@code AudioTrackSink}
  * с декодированным PCM (S16) → конвертация в канонический 48к стерео float → микшер.
  *
- * <p>Выход (воспроизведение микса) подаётся в ADM отдельной обвязкой —
- * см. {@link #pull}.
+ * <p>Реализует {@link AudioSource}: ADM тянет финальный микс через
+ * {@link #onPlaybackData} (заменяя штатный микшер libwebrtc) —
+ * {@code engine.audioDeviceModule().setAudioSource(mixer)}.
  */
-public final class RemoteAudioMixer {
+public final class RemoteAudioMixer implements AudioSource {
 
     /** Вид источника: голос (микрофон) или звук демонстрации. */
     public enum Kind { VOICE, DEMO }
 
     private final SoftwareMixer mixer = new SoftwareMixer();
+    private float[] scratch = new float[0]; // только аудио-поток воспроизведения
 
     /** Вид удалённого трека по его id (метка трека отправителя доходит через a=msid). */
     public static Kind kindOf(MediaStreamTrack track) {
@@ -61,5 +66,32 @@ public final class RemoteAudioMixer {
     /** Слить текущий микс (48к стерео float, {@code frames*2}) для воспроизведения. */
     public int pull(float[] out, int frames) {
         return mixer.pull(out, frames);
+    }
+
+    /**
+     * ADM тянет финальный микс для воспроизведения. Зовётся на аудио-потоке с
+     * фиксированным ритмом; не блокирует и не аллоцирует сверх переиспользуемого
+     * scratch. Недостача данных → тишина (возвращаем запрошенные {@code nSamples}).
+     *
+     * @param audioSamples   буфер на {@code nSamples*nChannels*nBytesPerSample} байт — заполняем
+     * @param nSamples       число кадров
+     * @param nBytesPerSample байт на сэмпл (2 = 16-бит)
+     * @param nChannels      каналов вывода
+     * @param samplesPerSec  частота вывода (микс — 48кГц; иные пока не ресэмплим)
+     */
+    @Override
+    public int onPlaybackData(byte[] audioSamples, int nSamples, int nBytesPerSample,
+                              int nChannels, int samplesPerSec) {
+        if (nBytesPerSample != 2 || nSamples <= 0) {
+            Arrays.fill(audioSamples, (byte) 0);
+            return nSamples;
+        }
+        if (scratch.length < nSamples * 2) {
+            scratch = new float[nSamples * 2];
+        }
+        pull(scratch, nSamples);
+        byte[] pcm = AudioFormatConverter.floatStereoToS16Interleaved(scratch, nSamples, nChannels);
+        System.arraycopy(pcm, 0, audioSamples, 0, Math.min(pcm.length, audioSamples.length));
+        return nSamples;
     }
 }
