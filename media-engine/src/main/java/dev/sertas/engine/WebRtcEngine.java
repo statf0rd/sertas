@@ -27,9 +27,39 @@ public final class WebRtcEngine {
     private final PeerConnectionFactory factory;
     private final AudioDeviceModuleBase adm;
 
-    /** Боевой движок: фабрика с реальным аудио-устройством (микрофон/динамики). */
+    /**
+     * Боевой движок: фабрика с реальным аудио-устройством (микрофон/динамики).
+     *
+     * <p>ADM и фабрика создаются на ОТДЕЛЬНОМ потоке, а не на потоке вызова. На
+     * Windows {@code AudioDeviceModule} инициализирует COM (Core Audio), а поток
+     * JavaFX уже держит COM в режиме STA — webrtc требует другой apartment и
+     * падает с фатальным «Invalid COM thread model change» (RPC_E_CHANGED_MODE).
+     * На свежем потоке COM ещё не инициализирован, и webrtc выставляет MTA сам.
+     */
     public WebRtcEngine() {
-        this(new AudioDeviceModule());
+        AudioDeviceModuleBase[] admHolder = new AudioDeviceModuleBase[1];
+        PeerConnectionFactory[] factoryHolder = new PeerConnectionFactory[1];
+        RuntimeException[] failure = new RuntimeException[1];
+        Thread init = new Thread(() -> {
+            try {
+                admHolder[0] = new AudioDeviceModule();
+                factoryHolder[0] = new PeerConnectionFactory(admHolder[0]);
+            } catch (RuntimeException e) {
+                failure[0] = e;
+            }
+        }, "sertas-webrtc-init");
+        init.start();
+        try {
+            init.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("прерван запуск WebRtcEngine", e);
+        }
+        if (failure[0] != null) {
+            throw failure[0];
+        }
+        this.adm = admHolder[0];
+        this.factory = factoryHolder[0];
     }
 
     private WebRtcEngine(AudioDeviceModuleBase adm) {
