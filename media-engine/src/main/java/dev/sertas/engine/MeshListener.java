@@ -16,8 +16,13 @@ public interface MeshListener {
     /** Удалённый трек (аудио/видео) от пира — для подписки на рендер/воспроизведение. */
     default void onRemoteTrack(String peerId, RTCRtpTransceiver transceiver) {}
 
-    /** Управляющий data-channel с пиром открыт. */
-    default void onControlChannel(String peerId, RTCDataChannel channel) {}
+    /**
+     * Управляющий data-channel с пиром открыт.
+     *
+     * @param initiator {@code true} — мы создали канал (инициатор пары); нужно
+     *                  для согласования второго соединения (звук демо) поверх канала.
+     */
+    default void onControlChannel(String peerId, RTCDataChannel channel, boolean initiator) {}
 
     default void onError(Throwable error) {}
 }

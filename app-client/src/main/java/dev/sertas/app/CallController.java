@@ -1,5 +1,6 @@
 package dev.sertas.app;
 
+import dev.onvoid.webrtc.RTCDataChannel;
 import dev.onvoid.webrtc.RTCPeerConnectionState;
 import dev.onvoid.webrtc.RTCRtpTransceiver;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
@@ -7,15 +8,18 @@ import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.sertas.app.ui.ParticipantModel;
 import dev.sertas.app.ui.VideoTile;
+import dev.sertas.engine.JavaSoundDemoPlayer;
 import dev.sertas.engine.MacSystemAudioCapture;
 import dev.sertas.engine.MeshCoordinator;
 import dev.sertas.engine.MeshListener;
 import dev.sertas.engine.RemoteAudioMixer;
+import dev.sertas.engine.ScreenAudioConnection;
 import dev.sertas.engine.ScreenCaptureSource;
 import dev.sertas.engine.SystemAudioProvider;
 import dev.sertas.engine.SystemAudioTrack;
 import dev.sertas.engine.WebRtcEngine;
 import dev.sertas.engine.WinSystemAudioCapture;
+import dev.sertas.media.OpusSdpMunger;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.collections.FXCollections;
@@ -28,6 +32,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.UnaryOperator;
 
 /**
  * Связывает {@link MeshCoordinator} с JavaFX-UI. Колбэки меша приходят на
@@ -41,15 +47,26 @@ public final class CallController implements MeshListener {
     private final Map<String, VideoTile> tiles = new HashMap<>();         // только FX-поток
     private final Set<String> wiredGains = new HashSet<>();               // (peerId:Kind) с навешанным слушателем; FX-поток
 
+    /** Музыкальный профиль Opus для секции трека звука демо. */
+    private static final UnaryOperator<String> SCREEN_AUDIO_MUSIC =
+            sdp -> OpusSdpMunger.applyMusicProfileToTrack(sdp, SystemAudioTrack.LABEL);
+
     private WebRtcEngine engine;
     private MeshCoordinator mesh;
     private AudioTrack mic;
     private ScreenCaptureSource screen;
-    private SystemAudioTrack screenAudio;
     private RemoteAudioMixer audioMixer;
     private ParticipantModel self;
+
+    // Звук демо — ОТДЕЛЬНЫЙ headless-движок (нет реального ADM → push не гоняется),
+    // сигналинг поверх control data-channel главного соединения, воспроизведение
+    // у зрителя через javax.sound. См. ScreenAudioConnection / диагноз гонки.
+    private WebRtcEngine audioEngine;
+    private SystemAudioTrack screenAudio;
+    private JavaSoundDemoPlayer demoPlayer;
+    private final Map<String, ScreenAudioConnection> screenAudioConns = new ConcurrentHashMap<>();
     private boolean micMuted = false;
-    private boolean sharing = false;
+    private volatile boolean sharing = false; // пишется из фонового потока старта показа
     private boolean screenAudioOn = false;
 
     public CallController() {
@@ -89,15 +106,14 @@ public final class CallController implements MeshListener {
         VideoTrack screenTrack = engine.createVideoTrack("screen", screen.source());
         mesh.addLocalTrack(screenTrack);
 
-        // Звук демо (CustomAudioSource) ВЫКЛЮЧЕН по умолчанию: на реальном ADM
-        // его pushAudio конфликтует с нативным аудио-трактом webrtc → гонка в
-        // audio_send_stream (RUNS_SERIALIZED) → фатальный краш на железе. Headless
-        // не ловил (HeadlessAudioDeviceModule, без реального ADM). Включается
-        // -Dsertas.demoaudio=on — пока архитектура не починена (нужен отдельный
-        // headless-ADM-путь для pushed-PCM).
+        // Звук демо — на ОТДЕЛЬНОМ headless-движке (без реального ADM), отдельным
+        // соединением (см. ScreenAudioConnection), чтобы pushAudio не гонялся с
+        // реальным ADM голоса (диагноз — гонка в audio_send_stream → краш). Трек НЕ
+        // добавляем в главный меш. Флаг -Dsertas.demoaudio=on (пока on для проверки).
         if ("on".equalsIgnoreCase(System.getProperty("sertas.demoaudio", "off"))) {
-            screenAudio = new SystemAudioTrack(engine);
-            mesh.addLocalTrack(screenAudio.track());
+            audioEngine = WebRtcEngine.headless();
+            screenAudio = new SystemAudioTrack(audioEngine);
+            demoPlayer = new JavaSoundDemoPlayer();
         }
 
         Platform.runLater(() -> {
@@ -120,20 +136,30 @@ public final class CallController implements MeshListener {
         return micMuted;
     }
 
-    /** Начать демонстрацию экрана (выбирается основной экран). */
+    /**
+     * Начать демонстрацию экрана (основной экран). Захват/энумерация экранов —
+     * тяжёлая нативная работа (TCC, ScreenCaptureKit), поэтому в ОТДЕЛЬНОМ потоке:
+     * иначе FX-поток блокируется и UI «лагает» при нажатии «Демонстрация».
+     */
     public void startScreenShare() {
-        try {
-            List<dev.onvoid.webrtc.media.video.desktop.DesktopSource> screens = ScreenCaptureSource.screens();
-            if (screens.isEmpty()) {
-                onError(new IllegalStateException("нет доступных экранов (проверьте разрешение)"));
-                return;
-            }
-            screen.select(screens.get(0).id, ScreenCaptureSource.Quality.BALANCED);
-            screen.start();
-            sharing = true;
-        } catch (RuntimeException e) {
-            onError(e);
+        ScreenCaptureSource src = screen;
+        if (src == null) {
+            return;
         }
+        new Thread(() -> {
+            try {
+                List<dev.onvoid.webrtc.media.video.desktop.DesktopSource> screens = ScreenCaptureSource.screens();
+                if (screens.isEmpty()) {
+                    onError(new IllegalStateException("нет доступных экранов (проверьте разрешение)"));
+                    return;
+                }
+                src.select(screens.get(0).id, ScreenCaptureSource.Quality.BALANCED);
+                src.start();
+                sharing = true;
+            } catch (RuntimeException e) {
+                onError(e);
+            }
+        }, "screen-share-start").start();
     }
 
     public void stopScreenShare() {
@@ -201,6 +227,12 @@ public final class CallController implements MeshListener {
             screenAudio = null;
         }
         screenAudioOn = false;
+        screenAudioConns.values().forEach(ScreenAudioConnection::close);
+        screenAudioConns.clear();
+        if (demoPlayer != null) {
+            demoPlayer.stop();
+            demoPlayer = null;
+        }
         if (mesh != null) {
             mesh.stop();
             mesh = null;
@@ -208,6 +240,10 @@ public final class CallController implements MeshListener {
         if (engine != null) {
             engine.dispose();
             engine = null;
+        }
+        if (audioEngine != null) {
+            audioEngine.dispose();
+            audioEngine = null;
         }
         mic = null;
         screen = null;
@@ -254,6 +290,10 @@ public final class CallController implements MeshListener {
             }
             wiredGains.remove(peerId + ":" + RemoteAudioMixer.Kind.VOICE);
             wiredGains.remove(peerId + ":" + RemoteAudioMixer.Kind.DEMO);
+            ScreenAudioConnection conn = screenAudioConns.remove(peerId);
+            if (conn != null) {
+                conn.close();
+            }
         });
     }
 
@@ -265,6 +305,36 @@ public final class CallController implements MeshListener {
                 m.setState(stateLabel(state));
             }
         });
+    }
+
+    @Override
+    public void onControlChannel(String peerId, RTCDataChannel channel, boolean initiator) {
+        if (audioEngine == null || screenAudio == null) {
+            return; // звук демо выключен
+        }
+        ScreenAudioConnection conn = new ScreenAudioConnection(
+                audioEngine, channel, initiator, screenAudio.track(),
+                this::onRemoteScreenAudio, SCREEN_AUDIO_MUSIC);
+        ScreenAudioConnection old = screenAudioConns.put(peerId, conn);
+        if (old != null) {
+            old.close();
+        }
+    }
+
+    /** Удалённый трек звука демо (на отдельном соединении) → воспроизведение через javax.sound. */
+    private void onRemoteScreenAudio(RTCRtpTransceiver transceiver) {
+        JavaSoundDemoPlayer player = demoPlayer;
+        if (player == null) {
+            return;
+        }
+        MediaStreamTrack track = transceiver.getReceiver().getTrack();
+        if (track instanceof AudioTrack audio) {
+            audio.addSink((data, bitsPerSample, sampleRate, channels, frames) -> {
+                if (bitsPerSample == 16 && frames > 0) {
+                    player.offer(data, sampleRate, channels);
+                }
+            });
+        }
     }
 
     @Override

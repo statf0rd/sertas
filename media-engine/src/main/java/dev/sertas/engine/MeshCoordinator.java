@@ -137,7 +137,7 @@ public final class MeshCoordinator implements SignalingListener {
         boolean iInitiate = selfId != null && selfId.compareTo(peerId) < 0;
         if (iInitiate) {
             RTCDataChannel control = session.createDataChannel("control");
-            listener.onControlChannel(peerId, control);
+            listener.onControlChannel(peerId, control, true);
             session.createOffer();
         }
     }
@@ -170,7 +170,7 @@ public final class MeshCoordinator implements SignalingListener {
 
             @Override
             public void onDataChannel(RTCDataChannel channel) {
-                listener.onControlChannel(peerId, channel);
+                listener.onControlChannel(peerId, channel, false);
             }
 
             @Override
