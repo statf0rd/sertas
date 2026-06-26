@@ -68,12 +68,13 @@ public final class CallController implements MeshListener {
         engine = new WebRtcEngine();
         mesh = new MeshCoordinator(engine, this);
 
-        // Микшер у слушателя: сводим удалённые треки сами и отдаём микс в ADM,
-        // чтобы рулить громкостью каждого источника (голос/демо) отдельно.
-        // Escape-hatch -Dsertas.mixer=off вернёт штатный playout libwebrtc, если
-        // кастомный микс на железе поведёт себя плохо (эхо/тишина).
-        audioMixer = new RemoteAudioMixer();
-        if (!"off".equalsIgnoreCase(System.getProperty("sertas.mixer", "on"))) {
+        // Per-источниковый микшер у слушателя ВЫКЛЮЧЕН по умолчанию: на реальном
+        // железе кастомный setAudioSource заменяет штатный playout libwebrtc и не
+        // выдаёт звук (голос пропадает). Включается -Dsertas.mixer=on — после
+        // доводки playout на железе станет дефолтом. Когда выключен — audioMixer
+        // остаётся null, и звук идёт штатным путём libwebrtc.
+        if ("on".equalsIgnoreCase(System.getProperty("sertas.mixer", "off"))) {
+            audioMixer = new RemoteAudioMixer();
             engine.audioDeviceModule().setAudioSource(audioMixer);
         }
 

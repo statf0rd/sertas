@@ -47,9 +47,12 @@ public final class CallView {
         stateCol.setPrefWidth(150);
         table.getColumns().add(nameCol);
         table.getColumns().add(stateCol);
-        // Громкость каждого источника у слушателя (голос / звук демо), 0..150%.
-        table.getColumns().add(gainColumn("Голос", ParticipantModel::voiceGainProperty));
-        table.getColumns().add(gainColumn("Демка", ParticipantModel::demoGainProperty));
+        // Слайдеры громкости источников показываем только при включённом микшере
+        // (-Dsertas.mixer=on) — иначе они были бы инертны (см. CallController).
+        if ("on".equalsIgnoreCase(System.getProperty("sertas.mixer", "off"))) {
+            table.getColumns().add(gainColumn("Голос", ParticipantModel::voiceGainProperty));
+            table.getColumns().add(gainColumn("Демка", ParticipantModel::demoGainProperty));
+        }
         table.setItems(participants);
         table.setPlaceholder(new Label("Ожидание участников…"));
         table.setPrefHeight(160);
