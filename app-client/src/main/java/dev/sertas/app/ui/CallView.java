@@ -92,7 +92,8 @@ public final class CallView {
                     slider.valueProperty().unbindBidirectional(bound);
                     bound = null;
                 }
-                if (m == null) {
+                // У себя нет удалённого источника — слайдер был бы инертным, прячем.
+                if (m == null || "self".equals(m.id())) {
                     setGraphic(null);
                     return;
                 }

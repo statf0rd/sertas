@@ -69,18 +69,27 @@ public final class AudioFormatConverter {
      */
     public static byte[] floatStereoToS16Interleaved(float[] stereo, int frames, int outChannels) {
         byte[] out = new byte[frames * outChannels * 2];
+        floatStereoToS16InterleavedInto(out, stereo, frames, outChannels);
+        return out;
+    }
+
+    /**
+     * Как {@link #floatStereoToS16Interleaved}, но пишет в готовый {@code dst}
+     * (без аллокации) — для real-time аудио-потока воспроизведения.
+     * {@code dst} должен вмещать {@code frames * outChannels * 2} байт.
+     */
+    public static void floatStereoToS16InterleavedInto(byte[] dst, float[] stereo, int frames, int outChannels) {
         int o = 0;
         for (int f = 0; f < frames; f++) {
             float l = stereo[f * 2];
             float r = stereo[f * 2 + 1];
             if (outChannels == 1) {
-                o = writeSample(out, o, (l + r) * 0.5f);
+                o = writeSample(dst, o, (l + r) * 0.5f);
             } else {
-                o = writeSample(out, o, l);
-                o = writeSample(out, o, r);
+                o = writeSample(dst, o, l);
+                o = writeSample(dst, o, r);
             }
         }
-        return out;
     }
 
     /** Прочитать S16LE-сэмпл из {@code b[i..i+1]} как float [-1, 1). */

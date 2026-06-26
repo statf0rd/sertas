@@ -84,6 +84,11 @@ class RemoteAudioMixerLoopbackTest {
         }
         assertTrue(heard, "тон демо не дошёл до микшера через sink");
 
+        // detach снимает источники и sink'и без падения.
+        mixer.detach("peerX");
+        assertFalse(mixer.hasSource("peerX", RemoteAudioMixer.Kind.VOICE));
+        assertFalse(mixer.hasSource("peerX", RemoteAudioMixer.Kind.DEMO));
+
         screenAudio.stop();
         a.close();
         b.close();

@@ -22,8 +22,10 @@ import javafx.geometry.Insets;
 import javafx.scene.layout.FlowPane;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Связывает {@link MeshCoordinator} с JavaFX-UI. Колбэки меша приходят на
@@ -35,6 +37,7 @@ public final class CallController implements MeshListener {
     private final FlowPane videoPane = new FlowPane(12, 12);
     private final Map<String, ParticipantModel> byId = new HashMap<>();   // только FX-поток
     private final Map<String, VideoTile> tiles = new HashMap<>();         // только FX-поток
+    private final Set<String> wiredGains = new HashSet<>();               // (peerId:Kind) с навешанным слушателем; FX-поток
 
     private WebRtcEngine engine;
     private MeshCoordinator mesh;
@@ -192,6 +195,7 @@ public final class CallController implements MeshListener {
             videoPane.getChildren().clear();
             participants.clear();
             byId.clear();
+            wiredGains.clear();
             self = null;
         });
     }
@@ -225,6 +229,8 @@ public final class CallController implements MeshListener {
             if (audioMixer != null) {
                 audioMixer.detach(peerId);
             }
+            wiredGains.remove(peerId + ":" + RemoteAudioMixer.Kind.VOICE);
+            wiredGains.remove(peerId + ":" + RemoteAudioMixer.Kind.DEMO);
         });
     }
 
@@ -268,14 +274,21 @@ public final class CallController implements MeshListener {
         if (audioMixer == null) {
             return;
         }
-        audioMixer.attach(peerId, audio);
+        audioMixer.attach(peerId, audio); // идемпотентно
         RemoteAudioMixer.Kind kind = RemoteAudioMixer.kindOf(audio);
         ParticipantModel m = byId.get(peerId);
-        if (m != null) {
+        String key = peerId + ":" + kind;
+        // Слушатель вешаем один раз на (участник, вид) — иначе дубли при повторном onRemoteTrack.
+        if (m != null && wiredGains.add(key)) {
             DoubleProperty gain = kind == RemoteAudioMixer.Kind.DEMO
                     ? m.demoGainProperty() : m.voiceGainProperty();
             audioMixer.setGain(peerId, kind, (float) gain.get());
-            gain.addListener((obs, o, n) -> audioMixer.setGain(peerId, kind, n.floatValue()));
+            gain.addListener((obs, o, n) -> {
+                RemoteAudioMixer mx = audioMixer; // снимок: после leave() поле null → no-op
+                if (mx != null) {
+                    mx.setGain(peerId, kind, n.floatValue());
+                }
+            });
         }
     }
 

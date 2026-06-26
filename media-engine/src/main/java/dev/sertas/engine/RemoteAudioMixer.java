@@ -3,9 +3,12 @@ package dev.sertas.engine;
 import dev.onvoid.webrtc.media.MediaStreamTrack;
 import dev.onvoid.webrtc.media.audio.AudioSource;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
+import dev.onvoid.webrtc.media.audio.AudioTrackSink;
 import dev.sertas.media.AudioFormatConverter;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Сторона слушателя: принимает удалённые аудио-треки, различает источники
@@ -22,8 +25,12 @@ public final class RemoteAudioMixer implements AudioSource {
     /** Вид источника: голос (микрофон) или звук демонстрации. */
     public enum Kind { VOICE, DEMO }
 
+    /** Привязка sink к треку, чтобы снять его при detach (иначе утечка). */
+    private record Attached(AudioTrack track, AudioTrackSink sink) {}
+
     private final SoftwareMixer mixer = new SoftwareMixer();
-    private float[] scratch = new float[0]; // только аудио-поток воспроизведения
+    private final Map<String, Attached> attached = new HashMap<>(); // только FX-поток (attach/detach)
+    private float[] scratch = new float[0];   // только аудио-поток воспроизведения
 
     /** Вид удалённого трека по его id (метка трека отправителя доходит через a=msid). */
     public static Kind kindOf(MediaStreamTrack track) {
@@ -34,24 +41,34 @@ public final class RemoteAudioMixer implements AudioSource {
         return peerId + ":" + kind;
     }
 
-    /** Подключить удалённый аудио-трек: добавить источник и sink в микшер. */
+    /** Подключить удалённый аудио-трек: добавить источник и sink в микшер. Идемпотентно. */
     public void attach(String peerId, AudioTrack track) {
         Kind kind = kindOf(track);
         String id = sourceId(peerId, kind);
+        if (attached.containsKey(id)) {
+            return; // уже подключён — без дублирующего sink
+        }
         mixer.addSource(id);
-        track.addSink((data, bitsPerSample, sampleRate, channels, frames) -> {
+        AudioTrackSink sink = (data, bitsPerSample, sampleRate, channels, frames) -> {
             // Удалённый Opus декодируется в 48к; иные частоты пока не ресэмплим.
             if (bitsPerSample == 16 && sampleRate == 48_000 && frames > 0) {
-                float[] stereo = AudioFormatConverter.s16InterleavedToFloatStereo(data, frames, channels);
-                mixer.submit(id, stereo);
+                mixer.submit(id, AudioFormatConverter.s16InterleavedToFloatStereo(data, frames, channels));
             }
-        });
+        };
+        attached.put(id, new Attached(track, sink));
+        track.addSink(sink);
     }
 
-    /** Отключить участника (оба его источника). */
+    /** Отключить участника: снять sink'и с треков и убрать источники. */
     public void detach(String peerId) {
-        mixer.removeSource(sourceId(peerId, Kind.VOICE));
-        mixer.removeSource(sourceId(peerId, Kind.DEMO));
+        for (Kind kind : Kind.values()) {
+            String id = sourceId(peerId, kind);
+            Attached a = attached.remove(id);
+            if (a != null) {
+                a.track().removeSink(a.sink());
+            }
+            mixer.removeSource(id);
+        }
     }
 
     /** Установить громкость источника (0..N). */
@@ -90,8 +107,8 @@ public final class RemoteAudioMixer implements AudioSource {
             scratch = new float[nSamples * 2];
         }
         pull(scratch, nSamples);
-        byte[] pcm = AudioFormatConverter.floatStereoToS16Interleaved(scratch, nSamples, nChannels);
-        System.arraycopy(pcm, 0, audioSamples, 0, Math.min(pcm.length, audioSamples.length));
+        // Пишем S16 прямо в буфер ADM — без аллокации на аудио-потоке.
+        AudioFormatConverter.floatStereoToS16InterleavedInto(audioSamples, scratch, nSamples, nChannels);
         return nSamples;
     }
 }
