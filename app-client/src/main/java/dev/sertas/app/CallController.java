@@ -12,8 +12,10 @@ import dev.sertas.engine.MeshCoordinator;
 import dev.sertas.engine.MeshListener;
 import dev.sertas.engine.RemoteAudioMixer;
 import dev.sertas.engine.ScreenCaptureSource;
+import dev.sertas.engine.SystemAudioProvider;
 import dev.sertas.engine.SystemAudioTrack;
 import dev.sertas.engine.WebRtcEngine;
+import dev.sertas.engine.WinSystemAudioCapture;
 import javafx.application.Platform;
 import javafx.beans.property.DoubleProperty;
 import javafx.collections.FXCollections;
@@ -147,18 +149,31 @@ public final class CallController implements MeshListener {
         if (screenAudio == null) {
             return;
         }
-        if (!MacSystemAudioCapture.isAvailable()) {
+        SystemAudioProvider provider = nativeSystemAudioProvider();
+        if (provider == null) {
             onError(new IllegalStateException(
-                    "нативный захват звука недоступен (соберите scripts/build-macos-audio-dylib.sh "
-                            + "и задайте -Dsertas.audio.dylib)"));
+                    "нативный захват звука демо недоступен на этой платформе "
+                            + "(нужен dylib/dll — см. scripts/build-*-audio-*)"));
             return;
         }
         try {
-            screenAudio.start(new MacSystemAudioCapture());
+            screenAudio.start(provider);
             screenAudioOn = true;
         } catch (RuntimeException e) {
             onError(e);
         }
+    }
+
+    /** Нативный провайдер системного звука под текущую ОС (null — недоступен). */
+    private static SystemAudioProvider nativeSystemAudioProvider() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("mac") || os.contains("darwin")) {
+            return MacSystemAudioCapture.isAvailable() ? new MacSystemAudioCapture() : null;
+        }
+        if (os.contains("win")) {
+            return WinSystemAudioCapture.isAvailable() ? new WinSystemAudioCapture() : null;
+        }
+        return null;
     }
 
     public void stopScreenAudio() {

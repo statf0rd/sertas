@@ -23,7 +23,11 @@ public final class SystemAudioTrack implements PcmSink {
 
     private final CustomAudioSource source = new CustomAudioSource();
     private final AudioTrack track;
-    private final Pcm10msReframer reframer = new Pcm10msReframer(48_000);
+
+    // Рефреймер под частоту источника (Mac SCStream — 48к; Windows WASAPI — частота
+    // устройства, бывает 44.1к). Пересоздаётся при смене частоты. Только поток захвата.
+    private Pcm10msReframer reframer;
+    private int reframerRate;
 
     private SystemAudioProvider provider;
 
@@ -55,6 +59,10 @@ public final class SystemAudioTrack implements PcmSink {
 
     @Override
     public void onPcm(float[] left, float[] right, int sampleRate) {
+        if (reframer == null || reframerRate != sampleRate) {
+            reframer = new Pcm10msReframer(sampleRate);
+            reframerRate = sampleRate;
+        }
         for (Pcm10msReframer.Block b : reframer.offer(left, right)) {
             byte[] pcm = AudioFormatConverter.float32PlanarToS16Interleaved(b.left(), b.right());
             source.pushAudio(pcm, BITS_PER_SAMPLE, sampleRate, CHANNELS, b.left().length);

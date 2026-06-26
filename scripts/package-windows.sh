@@ -27,6 +27,15 @@ for art in "jackson-databind-$JACKSON" "jackson-core-$JACKSON" "jackson-annotati
   cp "$f" "$STAGE/lib/"
 done
 
+# Нативный WASAPI-захват демо-звука (собирается на Windows: build-windows-audio-dll.bat).
+DLL="$ROOT/build/native-win/sertas_audio.dll"
+if [ -f "$DLL" ]; then
+  cp "$DLL" "$STAGE/lib/"
+  echo "  + sertas_audio.dll (WASAPI loopback)"
+else
+  echo "  ! sertas_audio.dll нет — звук демо на Windows будет недоступен (соберите scripts/build-windows-audio-dll.bat)"
+fi
+
 echo "[3/5] downloading Windows native jars"
 curl -fsSL "$MC/dev/onvoid/webrtc/webrtc-java/$WEBRTC/webrtc-java-$WEBRTC-windows-x86_64.jar" -o "$STAGE/lib/webrtc-java-$WEBRTC-windows-x86_64.jar"
 for m in base graphics controls; do
@@ -56,12 +65,14 @@ SERVER_URL="${SERTAS_SERVER:-ws://localhost:8080/signal}"
 TURN_ARG=""
 [ -n "${SERTAS_TURN:-}" ] && TURN_ARG="-Dsertas.turn=\"${SERTAS_TURN}\""
 JVM_EXTRA="${SERTAS_JVM_EXTRA:-}"  # доп. JVM-флаги (напр. -Dsertas.mixer=off)
+AUDIO_DLL_ARG=""
+[ -f "$STAGE/lib/sertas_audio.dll" ] && AUDIO_DLL_ARG='-Dsertas.audio.dll="%~dp0lib\sertas_audio.dll"'
 cat > "$STAGE/Запустить sertas.bat" <<BAT
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
 echo Запуск sertas... (первый старт может занять 10-20 секунд)
-"jre\\bin\\java.exe" -Dsertas.server="$SERVER_URL" $TURN_ARG $CAP_ARG $JVM_EXTRA -cp "lib\\*" dev.sertas.app.Launcher
+"jre\\bin\\java.exe" -Dsertas.server="$SERVER_URL" $TURN_ARG $CAP_ARG $AUDIO_DLL_ARG $JVM_EXTRA -cp "lib\\*" dev.sertas.app.Launcher
 echo.
 echo ---- Если выше есть ошибка - пришлите скриншот этого окна. ----
 pause
