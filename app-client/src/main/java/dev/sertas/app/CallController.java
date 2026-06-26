@@ -10,10 +10,12 @@ import dev.sertas.app.ui.VideoTile;
 import dev.sertas.engine.MacSystemAudioCapture;
 import dev.sertas.engine.MeshCoordinator;
 import dev.sertas.engine.MeshListener;
+import dev.sertas.engine.RemoteAudioMixer;
 import dev.sertas.engine.ScreenCaptureSource;
 import dev.sertas.engine.SystemAudioTrack;
 import dev.sertas.engine.WebRtcEngine;
 import javafx.application.Platform;
+import javafx.beans.property.DoubleProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -39,6 +41,7 @@ public final class CallController implements MeshListener {
     private AudioTrack mic;
     private ScreenCaptureSource screen;
     private SystemAudioTrack screenAudio;
+    private RemoteAudioMixer audioMixer;
     private ParticipantModel self;
     private boolean micMuted = false;
     private boolean sharing = false;
@@ -61,6 +64,15 @@ public final class CallController implements MeshListener {
     public void join(String url, String room, String name) {
         engine = new WebRtcEngine();
         mesh = new MeshCoordinator(engine, this);
+
+        // Микшер у слушателя: сводим удалённые треки сами и отдаём микс в ADM,
+        // чтобы рулить громкостью каждого источника (голос/демо) отдельно.
+        // Escape-hatch -Dsertas.mixer=off вернёт штатный playout libwebrtc, если
+        // кастомный микс на железе поведёт себя плохо (эхо/тишина).
+        audioMixer = new RemoteAudioMixer();
+        if (!"off".equalsIgnoreCase(System.getProperty("sertas.mixer", "on"))) {
+            engine.audioDeviceModule().setAudioSource(audioMixer);
+        }
 
         mic = engine.createMicTrack();
         mesh.addLocalTrack(mic);
@@ -173,6 +185,7 @@ public final class CallController implements MeshListener {
         }
         mic = null;
         screen = null;
+        audioMixer = null;
         Platform.runLater(() -> {
             tiles.values().forEach(VideoTile::dispose);
             tiles.clear();
@@ -209,6 +222,9 @@ public final class CallController implements MeshListener {
                 videoPane.getChildren().remove(tile.node());
                 tile.dispose();
             }
+            if (audioMixer != null) {
+                audioMixer.detach(peerId);
+            }
         });
     }
 
@@ -226,8 +242,15 @@ public final class CallController implements MeshListener {
     public void onRemoteTrack(String peerId, RTCRtpTransceiver transceiver) {
         Platform.runLater(() -> {
             MediaStreamTrack track = transceiver.getReceiver().getTrack();
-            if (track == null || !MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind())) {
-                return; // аудио проигрывается само, плитка не нужна
+            if (track == null) {
+                return;
+            }
+            if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind())) {
+                attachRemoteAudio(peerId, (AudioTrack) track);
+                return;
+            }
+            if (!MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind())) {
+                return;
             }
             VideoTile old = tiles.remove(peerId);
             if (old != null) {
@@ -238,6 +261,22 @@ public final class CallController implements MeshListener {
             tiles.put(peerId, tile);
             videoPane.getChildren().add(tile.node());
         });
+    }
+
+    /** Подключить удалённый аудио-трек к микшеру и связать его громкость со слайдером участника. */
+    private void attachRemoteAudio(String peerId, AudioTrack audio) {
+        if (audioMixer == null) {
+            return;
+        }
+        audioMixer.attach(peerId, audio);
+        RemoteAudioMixer.Kind kind = RemoteAudioMixer.kindOf(audio);
+        ParticipantModel m = byId.get(peerId);
+        if (m != null) {
+            DoubleProperty gain = kind == RemoteAudioMixer.Kind.DEMO
+                    ? m.demoGainProperty() : m.voiceGainProperty();
+            audioMixer.setGain(peerId, kind, (float) gain.get());
+            gain.addListener((obs, o, n) -> audioMixer.setGain(peerId, kind, n.floatValue()));
+        }
     }
 
     @Override
