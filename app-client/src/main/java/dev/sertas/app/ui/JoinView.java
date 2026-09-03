@@ -45,6 +45,19 @@ public final class JoinView {
         return join;
     }
 
+    /** Тестовый автодрайв (-Dsertas.autojoin): выставить поля программно. */
+    public void setServerUrl(String url) {
+        server.setText(url);
+    }
+
+    public void setRoomCode(String code) {
+        room.setText(code);
+    }
+
+    public void setDisplayName(String value) {
+        name.setText(value);
+    }
+
     public String serverUrl() {
         return server.getText().trim();
     }

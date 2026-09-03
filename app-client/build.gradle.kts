@@ -27,7 +27,9 @@ dependencies {
 // Проброс -Dsertas.* из gradle-вызова в приложение, напр.:
 //   ./gradlew :app-client:run -Dsertas.demoaudio=on
 tasks.named<JavaExec>("run") {
-    listOf("sertas.demoaudio", "sertas.mixer", "sertas.server", "sertas.turn").forEach { p ->
+    listOf("sertas.demoaudio", "sertas.mixer", "sertas.server", "sertas.turn",
+        "sertas.screencap", "sertas.autojoin", "sertas.autoshare", "sertas.autodemoaudio",
+        "sertas.audiostats", "sertas.dumpframes").forEach { p ->
         System.getProperty(p)?.let { systemProperty(p, it) }
     }
 }

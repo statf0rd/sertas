@@ -2,9 +2,12 @@ package dev.sertas.app;
 
 import dev.sertas.app.ui.CallView;
 import dev.sertas.app.ui.JoinView;
+import javafx.animation.PauseTransition;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 
 /** Точка входа JavaFX: экран входа → экран звонка. */
 public class SertasApp extends Application {
@@ -34,6 +37,18 @@ public class SertasApp extends Application {
             showCall(room);
         });
         stage.setScene(new Scene(join.getRoot(), 420, 300));
+
+        // Тестовый автодрайв: -Dsertas.autojoin=КОМНАТА/ИМЯ — заполнить поля и
+        // войти без кликов. Сервер при этом берётся из -Dsertas.server/env/файла
+        // (минуя сохранённые prefs), чтобы тест шёл на явно заданный сервер.
+        String auto = System.getProperty("sertas.autojoin", "");
+        int slash = auto.indexOf('/');
+        if (slash > 0 && slash < auto.length() - 1) {
+            join.setServerUrl(ServerConfig.defaultServerUrl());
+            join.setRoomCode(auto.substring(0, slash));
+            join.setDisplayName(auto.substring(slash + 1));
+            Platform.runLater(() -> join.joinButton().fire());
+        }
     }
 
     private void showCall(String room) {
@@ -72,6 +87,22 @@ public class SertasApp extends Application {
             showJoin();
         });
         stage.setScene(new Scene(call.getRoot(), 1000, 720));
+
+        // Тестовый автодрайв: -Dsertas.autoshare=СЕК — включить демонстрацию через
+        // СЕК секунд после входа; -Dsertas.autodemoaudio=СЕК — затем звук демо
+        // (отсчёт от старта демонстрации; требует -Dsertas.demoaudio=on).
+        int shareAfter = Integer.getInteger("sertas.autoshare", -1);
+        if (shareAfter >= 0) {
+            PauseTransition share = new PauseTransition(Duration.seconds(shareAfter));
+            share.setOnFinished(e -> call.shareButton().setSelected(true));
+            share.play();
+            int audioAfter = Integer.getInteger("sertas.autodemoaudio", -1);
+            if (audioAfter >= 0) {
+                PauseTransition audio = new PauseTransition(Duration.seconds(shareAfter + audioAfter));
+                audio.setOnFinished(e -> call.screenAudioButton().setSelected(true));
+                audio.play();
+            }
+        }
     }
 
     @Override

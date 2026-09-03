@@ -368,6 +368,9 @@ public final class CallController implements MeshListener {
             }
             if (MediaStreamTrack.AUDIO_TRACK_KIND.equals(track.getKind())) {
                 attachRemoteAudio(peerId, (AudioTrack) track);
+                if ("on".equalsIgnoreCase(System.getProperty("sertas.audiostats", "off"))) {
+                    wireAudioStats(peerId, (AudioTrack) track);
+                }
                 return;
             }
             if (!MediaStreamTrack.VIDEO_TRACK_KIND.equals(track.getKind())) {
@@ -383,6 +386,43 @@ public final class CallController implements MeshListener {
             VideoTile tile = new VideoTile((VideoTrack) track);
             tiles.put(peerId, tile);
             videoPane.getChildren().add(tile.node());
+        });
+    }
+
+    /**
+     * Диагностика приёма голоса (-Dsertas.audiostats=on): RMS декодированного PCM
+     * раз в ~5с. RMS > 0 — звук реально доходит и декодируется (не тишина).
+     */
+    private static void wireAudioStats(String peerId, AudioTrack audio) {
+        audio.addSink(new dev.onvoid.webrtc.media.audio.AudioTrackSink() {
+            private long sumSq;
+            private long samples;
+            private long windowStartNs;
+
+            @Override
+            public void onData(byte[] data, int bitsPerSample, int sampleRate,
+                               int channels, int frames) {
+                if (bitsPerSample != 16) {
+                    return;
+                }
+                int n = Math.min(data.length, frames * channels * 2);
+                for (int i = 0; i + 1 < n; i += 2) {
+                    int v = (short) ((data[i] & 0xff) | (data[i + 1] << 8));
+                    sumSq += (long) v * v;
+                    samples++;
+                }
+                long now = System.nanoTime();
+                if (windowStartNs == 0) {
+                    windowStartNs = now;
+                } else if (now - windowStartNs >= 5_000_000_000L && samples > 0) {
+                    long rms = Math.round(Math.sqrt((double) sumSq / samples));
+                    System.err.println("[recv] audio peer=" + peerId + " rms=" + rms
+                            + " (" + sampleRate + "Гц x" + channels + ", сэмплов=" + samples + ")");
+                    sumSq = 0;
+                    samples = 0;
+                    windowStartNs = now;
+                }
+            }
         });
     }
 
