@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 /**
@@ -68,6 +69,7 @@ public final class CallController implements MeshListener {
     private boolean micMuted = false;
     private volatile boolean sharing = false; // пишется из фонового потока старта показа
     private boolean screenAudioOn = false;
+    private volatile Consumer<String> errorSink; // получатель ошибок для UI (вызывается в FX-потоке)
 
     public CallController() {
         videoPane.setPadding(new Insets(12));
@@ -80,6 +82,11 @@ public final class CallController implements MeshListener {
     /** Панель с видео-плитками удалённых участников. */
     public FlowPane videoPane() {
         return videoPane;
+    }
+
+    /** Куда показывать ошибки (в т.ч. неудачный старт показа); вызывается в FX-потоке. */
+    public void setErrorSink(Consumer<String> sink) {
+        this.errorSink = sink;
     }
 
     /** Создать движок, треки (микрофон + экран) и войти в комнату. */
@@ -452,6 +459,11 @@ public final class CallController implements MeshListener {
     @Override
     public void onError(Throwable error) {
         System.err.println("mesh error: " + error);
+        Consumer<String> sink = errorSink;
+        if (sink != null) {
+            String msg = error.getMessage() != null ? error.getMessage() : String.valueOf(error);
+            Platform.runLater(() -> sink.accept(msg));
+        }
     }
 
     private static String stateLabel(RTCPeerConnectionState state) {

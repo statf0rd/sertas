@@ -86,12 +86,14 @@ DEMOAUDIO="${SERTAS_DEMOAUDIO:-on}"
 cat > "$APP/Contents/MacOS/sertas" <<LAUNCH
 #!/bin/bash
 HERE="\$(cd "\$(dirname "\$0")/../Resources" && pwd)"
+LOG="\$HOME/Library/Logs/sertas.log"   # лог приложения (предыдущий запуск -> sertas.log.prev)
+mkdir -p "\$(dirname "\$LOG")"; [ -f "\$LOG" ] && mv -f "\$LOG" "\$LOG.prev"
 exec "\$HERE/jre/Contents/Home/bin/java" \\
   -Dsertas.server="$SERVER_URL" \\
   -Dsertas.audio.dylib="\$HERE/lib/libsertas_audio.dylib" \\
   -Dsertas.demoaudio=$DEMOAUDIO \\
 $TURN_LINE
-  -cp "\$HERE/lib/*" dev.sertas.app.Launcher
+  -cp "\$HERE/lib/*" dev.sertas.app.Launcher >>"\$LOG" 2>&1
 LAUNCH
 chmod +x "$APP/Contents/MacOS/sertas"
 chmod +x "$RES/jre/Contents/Home/bin/java" 2>/dev/null || true

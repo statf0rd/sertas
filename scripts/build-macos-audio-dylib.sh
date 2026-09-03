@@ -21,7 +21,7 @@ fi
 mkdir -p "$OUT"
 
 echo "[1/1] swiftc ($ARCH) -> libsertas_audio.dylib (JDK: $JH)"
-swiftc -emit-library -O "${TARGET_ARG[@]}" \
+swiftc -emit-library -O ${TARGET_ARG[@]+"${TARGET_ARG[@]}"} \
   -import-objc-header "$ROOT/native-capture/macos/jni_bridge.h" \
   -I "$JH/include" -I "$JH/include/darwin" \
   -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework CoreVideo \

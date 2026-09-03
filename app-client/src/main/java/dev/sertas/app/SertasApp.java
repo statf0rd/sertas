@@ -67,6 +67,14 @@ public class SertasApp extends Application {
                 call.screenAudioButton().setSelected(false);
             }
         });
+        // Ошибки контроллера (в т.ч. неудачный старт показа) показываем в окне:
+        // stderr в .app-бандле пользователю не виден (уходит в лог-файл).
+        controller.setErrorSink(msg -> {
+            call.showError(msg);
+            if (call.shareButton().isSelected() && !controller.isSharing()) {
+                call.shareButton().setSelected(false); // показ не стартовал — откат кнопки
+            }
+        });
         // Звук демо доступен только во время демонстрации экрана.
         call.screenAudioButton().disableProperty().bind(call.shareButton().selectedProperty().not());
         call.screenAudioButton().selectedProperty().addListener((obs, was, on) -> {

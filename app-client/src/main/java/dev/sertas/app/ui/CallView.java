@@ -28,6 +28,7 @@ public final class CallView {
     private final ToggleButton share = new ToggleButton("Демонстрация");
     private final ToggleButton screenAudio = new ToggleButton("Звук демонстрации");
     private final Button leave = new Button("Выйти");
+    private final Label status = new Label(); // последняя ошибка (красным)
 
     public CallView(String room,
                     ObservableList<ParticipantModel> participants,
@@ -68,7 +69,9 @@ public final class CallView {
                 : new HBox(10, mute, share, leave);
         controls.setPadding(new Insets(10));
 
-        VBox top = new VBox(header);
+        status.setWrapText(true);
+        status.setStyle("-fx-text-fill: #c62828;");
+        VBox top = new VBox(4, header, status);
         top.setPadding(new Insets(10));
 
         root.setTop(top);
@@ -110,6 +113,11 @@ public final class CallView {
             }
         });
         return col;
+    }
+
+    /** Показать ошибку под заголовком (пустая строка — скрыть). */
+    public void showError(String message) {
+        status.setText(message);
     }
 
     public Parent getRoot() {
