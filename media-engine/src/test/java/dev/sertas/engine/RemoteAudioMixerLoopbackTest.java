@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,19 +28,24 @@ class RemoteAudioMixerLoopbackTest {
 
     @Test
     void receiverDistinguishesVoiceAndDemoAndMixesTone() throws Exception {
-        WebRtcEngine engine = WebRtcEngine.headless();
+        WebRtcEngine sendEngine = WebRtcEngine.pushOnly(); // отправитель: ADM без захвата (иначе гонка с pushAudio)
+        WebRtcEngine engine = WebRtcEngine.headless();     // приёмник: виртуальный playout
         PeerSession[] holder = new PeerSession[2];
+        // Два движка = два набора нативных потоков. Кросс-вызовы между PC делаем
+        // с отдельного потока: прямой вызов из колбэка одного движка в другой
+        // (и обратно) — взаимное блокирующее Invoke → deadlock.
+        ExecutorService sig = Executors.newSingleThreadExecutor();
         Set<String> remoteIds = ConcurrentHashMap.newKeySet();
         RemoteAudioMixer mixer = new RemoteAudioMixer();
         CountDownLatch bothArrived = new CountDownLatch(1);
 
-        PeerSession a = new PeerSession(engine, new PeerSession.Signals() {
-            @Override public void onLocalDescription(RTCSessionDescription d) { holder[1].onRemoteDescription(d); }
-            @Override public void onLocalIceCandidate(RTCIceCandidate c) { holder[1].onRemoteIceCandidate(c); }
+        PeerSession a = new PeerSession(sendEngine, new PeerSession.Signals() {
+            @Override public void onLocalDescription(RTCSessionDescription d) { sig.execute(() -> holder[1].onRemoteDescription(d)); }
+            @Override public void onLocalIceCandidate(RTCIceCandidate c) { sig.execute(() -> holder[1].onRemoteIceCandidate(c)); }
         });
         PeerSession b = new PeerSession(engine, new PeerSession.Signals() {
-            @Override public void onLocalDescription(RTCSessionDescription d) { holder[0].onRemoteDescription(d); }
-            @Override public void onLocalIceCandidate(RTCIceCandidate c) { holder[0].onRemoteIceCandidate(c); }
+            @Override public void onLocalDescription(RTCSessionDescription d) { sig.execute(() -> holder[0].onRemoteDescription(d)); }
+            @Override public void onLocalIceCandidate(RTCIceCandidate c) { sig.execute(() -> holder[0].onRemoteIceCandidate(c)); }
             @Override public void onTrack(RTCRtpTransceiver transceiver) {
                 MediaStreamTrack track = transceiver.getReceiver().getTrack();
                 if (track instanceof AudioTrack audio) {
@@ -53,9 +60,9 @@ class RemoteAudioMixerLoopbackTest {
         holder[0] = a;
         holder[1] = b;
 
-        AudioTrack mic = engine.factory().createAudioTrack("mic", engine.factory().createAudioSource(new AudioOptions()));
+        AudioTrack mic = sendEngine.factory().createAudioTrack("mic", sendEngine.factory().createAudioSource(new AudioOptions()));
         a.addTrack(mic);
-        SystemAudioTrack screenAudio = new SystemAudioTrack(engine);
+        SystemAudioTrack screenAudio = new SystemAudioTrack(sendEngine);
         a.addTrack(screenAudio.track());
         a.createOffer();
 
@@ -93,5 +100,7 @@ class RemoteAudioMixerLoopbackTest {
         a.close();
         b.close();
         engine.dispose();
+        sendEngine.dispose();
+        sig.shutdownNow();
     }
 }

@@ -59,10 +59,12 @@ public final class CallController implements MeshListener {
     private RemoteAudioMixer audioMixer;
     private ParticipantModel self;
 
-    // Звук демо — ОТДЕЛЬНЫЙ headless-движок (нет реального ADM → push не гоняется),
-    // сигналинг поверх control data-channel главного соединения, воспроизведение
-    // у зрителя через javax.sound. См. ScreenAudioConnection / диагноз гонки.
-    private WebRtcEngine audioEngine;
+    // Звук демо — ДВА отдельных движка (отдача: pushOnly без потока захвата ADM,
+    // приём: headless с виртуальным playout), сигналинг поверх control data-channel
+    // главного соединения, воспроизведение у зрителя через javax.sound.
+    // См. ScreenAudioConnection / диагноз гонки в audio_send_stream.
+    private WebRtcEngine audioEngine;     // приём звука демо (headless: виртуальный playout)
+    private WebRtcEngine audioSendEngine; // отдача звука демо (pushOnly: ADM без захвата)
     private SystemAudioTrack screenAudio;
     private JavaSoundDemoPlayer demoPlayer;
     private final Map<String, ScreenAudioConnection> screenAudioConns = new ConcurrentHashMap<>();
@@ -120,15 +122,19 @@ public final class CallController implements MeshListener {
         VideoTrack screenTrack = engine.createVideoTrack("screen", screen.source());
         mesh.addLocalTrack(screenTrack);
 
-        // Звук демо — на ОТДЕЛЬНОМ headless-движке (без реального ADM), отдельным
-        // соединением (см. ScreenAudioConnection), чтобы pushAudio не гонялся с
-        // реальным ADM голоса (диагноз — гонка в audio_send_stream → краш). Трек НЕ
-        // добавляем в главный меш. Флаг -Dsertas.demoaudio=on (пока on для проверки).
+        // Звук демо — отдельными соединениями (см. ScreenAudioConnection) на ДВУХ
+        // отдельных движках: отдача — pushOnly (ADM kDummyAudio, без потока захвата),
+        // приём — headless (виртуальный playout кормит sink'и). Любой ADM с потоком
+        // захвата (реальный ADM голоса или headless) кормит все AudioSendStream
+        // фабрики и вместе с pushAudio даёт двух производителей → фатальная
+        // RTC_CHECK_RUNS_SERIALIZED в audio_send_stream.cc (краш при включении
+        // «Звук демонстрации»). Трек НЕ добавляем в главный меш.
         if ("on".equalsIgnoreCase(System.getProperty("sertas.demoaudio", "off"))) {
             audioEngine = WebRtcEngine.headless();
-            screenAudio = new SystemAudioTrack(audioEngine);
+            audioSendEngine = WebRtcEngine.pushOnly();
+            screenAudio = new SystemAudioTrack(audioSendEngine);
             demoPlayer = new JavaSoundDemoPlayer();
-            System.err.println("[demo] dual-factory звука демо включён (headless audioEngine)");
+            System.err.println("[demo] звук демо включён (send=pushOnly, recv=headless)");
         }
 
         Platform.runLater(() -> {
@@ -267,6 +273,10 @@ public final class CallController implements MeshListener {
             audioEngine.dispose();
             audioEngine = null;
         }
+        if (audioSendEngine != null) {
+            audioSendEngine.dispose();
+            audioSendEngine = null;
+        }
         mic = null;
         screen = null;
         audioMixer = null;
@@ -342,7 +352,7 @@ public final class CallController implements MeshListener {
         }
         System.err.println("[demo] onControlChannel peer=" + peerId + " initiator=" + initiator);
         ScreenAudioConnection conn = new ScreenAudioConnection(
-                audioEngine, channel, initiator, screenAudio.track(),
+                audioSendEngine, audioEngine, channel, screenAudio.track(),
                 this::onRemoteScreenAudio, SCREEN_AUDIO_MUSIC);
         ScreenAudioConnection old = screenAudioConns.put(peerId, conn);
         if (old != null) {

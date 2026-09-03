@@ -7,6 +7,7 @@ import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCPeerConnection;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModule;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase;
+import dev.onvoid.webrtc.media.audio.AudioLayer;
 import dev.onvoid.webrtc.media.audio.AudioOptions;
 import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.audio.AudioTrackSource;
@@ -16,6 +17,7 @@ import dev.onvoid.webrtc.media.video.VideoTrackSource;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Владелец единственного {@link PeerConnectionFactory} на приложение. Создаёт
@@ -37,13 +39,29 @@ public final class WebRtcEngine {
      * На свежем потоке COM ещё не инициализирован, и webrtc выставляет MTA сам.
      */
     public WebRtcEngine() {
-        AudioDeviceModuleBase[] admHolder = new AudioDeviceModuleBase[1];
-        PeerConnectionFactory[] factoryHolder = new PeerConnectionFactory[1];
+        this(createOnInitThread(AudioDeviceModule::new));
+    }
+
+    private WebRtcEngine(AudioDeviceModuleBase adm) {
+        this.adm = adm;
+        this.factory = new PeerConnectionFactory(adm);
+    }
+
+    private WebRtcEngine(Parts parts) {
+        this.adm = parts.adm;
+        this.factory = parts.factory;
+    }
+
+    private record Parts(AudioDeviceModuleBase adm, PeerConnectionFactory factory) {}
+
+    /** ADM + фабрика на отдельном потоке (см. {@link #WebRtcEngine()}). */
+    private static Parts createOnInitThread(Supplier<AudioDeviceModuleBase> admFactory) {
+        Parts[] holder = new Parts[1];
         RuntimeException[] failure = new RuntimeException[1];
         Thread init = new Thread(() -> {
             try {
-                admHolder[0] = new AudioDeviceModule();
-                factoryHolder[0] = new PeerConnectionFactory(admHolder[0]);
+                AudioDeviceModuleBase adm = admFactory.get();
+                holder[0] = new Parts(adm, new PeerConnectionFactory(adm));
             } catch (RuntimeException e) {
                 failure[0] = e;
             }
@@ -58,18 +76,30 @@ public final class WebRtcEngine {
         if (failure[0] != null) {
             throw failure[0];
         }
-        this.adm = admHolder[0];
-        this.factory = factoryHolder[0];
+        return holder[0];
     }
 
-    private WebRtcEngine(AudioDeviceModuleBase adm) {
-        this.adm = adm;
-        this.factory = new PeerConnectionFactory(adm);
-    }
-
-    /** Движок без реальных аудио-устройств — для тестов и сценариев push-only PCM. */
+    /**
+     * Движок без реальных аудио-устройств: {@link HeadlessAudioDeviceModule} крутит
+     * виртуальные потоки воспроизведения И захвата. Годится для ПРИЁМА (sink'и
+     * удалённых треков получают PCM только когда идёт playout), но НЕ для отдачи
+     * push-источника: поток захвата headless-ADM кормит тот же
+     * {@code AudioSendStream}, что и {@code CustomAudioSource.pushAudio}, и libwebrtc
+     * падает на {@code RTC_CHECK_RUNS_SERIALIZED} — см. {@link #pushOnly()}.
+     */
     public static WebRtcEngine headless() {
         return new WebRtcEngine(new HeadlessAudioDeviceModule());
+    }
+
+    /**
+     * Движок для ОТДАЧИ из push-источников ({@code CustomAudioSource}): ADM
+     * {@code kDummyAudio} — у него нет ни потока захвата, ни воспроизведения,
+     * поэтому единственный производитель кадров для {@code AudioSendStream} — наш
+     * push-поток. Принимать звук на этом движке нельзя (playout не запускается,
+     * sink'и удалённых треков молчат) — для приёма см. {@link #headless()}.
+     */
+    public static WebRtcEngine pushOnly() {
+        return new WebRtcEngine(createOnInitThread(() -> new AudioDeviceModule(AudioLayer.kDummyAudio)));
     }
 
     public PeerConnectionFactory factory() {

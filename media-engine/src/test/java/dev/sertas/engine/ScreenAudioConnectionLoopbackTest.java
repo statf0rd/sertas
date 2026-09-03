@@ -24,7 +24,8 @@ class ScreenAudioConnectionLoopbackTest {
 
     @Test
     void tonesFlowOverTunneledSecondConnection() throws Exception {
-        WebRtcEngine engine = WebRtcEngine.headless();
+        WebRtcEngine engine = WebRtcEngine.headless();      // главные сессии + приём звука демо
+        WebRtcEngine sendEngine = WebRtcEngine.pushOnly();  // отдача звука демо
         PeerSession[] main = new PeerSession[2];
         RTCDataChannel[] ctrl = new RTCDataChannel[2];
         CountDownLatch ctrlReady = new CountDownLatch(2);
@@ -48,13 +49,13 @@ class ScreenAudioConnectionLoopbackTest {
         assertTrue(ctrlReady.await(20, TimeUnit.SECONDS), "control-каналы не готовы");
 
         CountDownLatch heard = new CountDownLatch(1);
-        SystemAudioTrack sat = new SystemAudioTrack(engine);
+        SystemAudioTrack sat = new SystemAudioTrack(sendEngine);
 
         // A (инициатор) шлёт screen-audio; B (зритель) принимает и ловит ненулевой звук.
         ScreenAudioConnection saA = new ScreenAudioConnection(
-                engine, ctrl[0], true, sat.track(), t -> {}, UnaryOperator.identity());
+                sendEngine, engine, ctrl[0], sat.track(), t -> {}, UnaryOperator.identity());
         ScreenAudioConnection saB = new ScreenAudioConnection(
-                engine, ctrl[1], false, null, transceiver -> {
+                sendEngine, engine, ctrl[1], null, transceiver -> {
             MediaStreamTrack track = transceiver.getReceiver().getTrack();
             if (track instanceof AudioTrack audio) {
                 audio.addSink((data, bps, sr, ch, fr) -> {
@@ -76,5 +77,6 @@ class ScreenAudioConnectionLoopbackTest {
         a.close();
         b.close();
         engine.dispose();
+        sendEngine.dispose();
     }
 }
