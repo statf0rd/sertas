@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Собирает sertas.app для macOS Apple Silicon (arm64) с вложенной JRE и
-# нативными библиотеками под macos-aarch64. Адрес сервера/TURN берутся из env
-# (не хардкод в репозитории).
+# Собирает sertas.app для macOS с вложенной JRE и нативными библиотеками.
+# По умолчанию Apple Silicon (arm64); ARCH=x86_64 — Intel (кросс-сборка с
+# Apple Silicon). Адрес сервера/TURN берутся из env (не хардкод в репозитории).
 #
 #   SERTAS_SERVER='ws://...' SERTAS_TURN='turn:...' ./scripts/package-macos.sh
 #   -> ~/Desktop/sertas-macos.zip  (внутри sertas.app)
+#   ARCH=x86_64 ... ./scripts/package-macos.sh -> ~/Desktop/sertas-macos-intel.zip
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-STAGE=/tmp/sertas-macos
-OUT="${OUT:-$HOME/Desktop/sertas-macos.zip}"
+ARCH="${ARCH:-aarch64}"
+case "$ARCH" in
+  aarch64) JFX_CLS=mac-aarch64; JRE_ARCH=aarch64; SUFFIX="";        DYLIB_DIR="$ROOT/media-engine/build/native" ;;
+  x86_64)  JFX_CLS=mac;         JRE_ARCH=x64;     SUFFIX="-intel";  DYLIB_DIR="$ROOT/media-engine/build/native/x86_64" ;;
+  *) echo "ARCH должен быть aarch64 или x86_64"; exit 1 ;;
+esac
+STAGE=/tmp/sertas-macos$SUFFIX
+OUT="${OUT:-$HOME/Desktop/sertas-macos$SUFFIX.zip}"
 JFX=21.0.4
 WEBRTC=0.14.0
 JACKSON=2.17.2
@@ -31,21 +38,22 @@ for art in "jackson-databind-$JACKSON" "jackson-core-$JACKSON" "jackson-annotati
   cp "$f" "$RES/lib/"
 done
 
-echo "[2b/5] native audio dylib (ScreenCaptureKit)"
-"$ROOT/scripts/build-macos-audio-dylib.sh"
-cp "$ROOT/media-engine/build/native/libsertas_audio.dylib" "$RES/lib/"
+echo "[2b/5] native audio dylib (ScreenCaptureKit, $ARCH)"
+if [ "$ARCH" = x86_64 ]; then ARCH=x86_64 "$ROOT/scripts/build-macos-audio-dylib.sh"; else "$ROOT/scripts/build-macos-audio-dylib.sh"; fi
+cp "$DYLIB_DIR/libsertas_audio.dylib" "$RES/lib/"
 
-echo "[3/5] downloading macOS arm64 native jars"
-curl -fsSL "$MC/dev/onvoid/webrtc/webrtc-java/$WEBRTC/webrtc-java-$WEBRTC-macos-aarch64.jar" -o "$RES/lib/webrtc-java-$WEBRTC-macos-aarch64.jar"
+echo "[3/5] downloading macOS $ARCH native jars"
+curl -fsSL "$MC/dev/onvoid/webrtc/webrtc-java/$WEBRTC/webrtc-java-$WEBRTC-macos-$ARCH.jar" -o "$RES/lib/webrtc-java-$WEBRTC-macos-$ARCH.jar"
 for m in base graphics controls; do
-  curl -fsSL "$MC/org/openjfx/javafx-$m/$JFX/javafx-$m-$JFX-mac-aarch64.jar" -o "$RES/lib/javafx-$m-$JFX-mac-aarch64.jar"
+  curl -fsSL "$MC/org/openjfx/javafx-$m/$JFX/javafx-$m-$JFX-$JFX_CLS.jar" -o "$RES/lib/javafx-$m-$JFX-$JFX_CLS.jar"
 done
 
-echo "[4/5] downloading macOS arm64 JRE (Temurin 21)"
-curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/mac/aarch64/jre/hotspot/normal/eclipse" -o /tmp/jre-mac.tar.gz
-rm -rf /tmp/jre-mac-extract; mkdir -p /tmp/jre-mac-extract
-tar -xzf /tmp/jre-mac.tar.gz -C /tmp/jre-mac-extract
-INNER=$(ls -d /tmp/jre-mac-extract/*/ | head -1)
+echo "[4/5] downloading macOS $ARCH JRE (Temurin 21)"
+JRE_TMP=/tmp/jre-mac$SUFFIX
+curl -fsSL "https://api.adoptium.net/v3/binary/latest/21/ga/mac/$JRE_ARCH/jre/hotspot/normal/eclipse" -o "$JRE_TMP.tar.gz"
+rm -rf "$JRE_TMP-extract"; mkdir -p "$JRE_TMP-extract"
+tar -xzf "$JRE_TMP.tar.gz" -C "$JRE_TMP-extract"
+INNER=$(ls -d "$JRE_TMP-extract"/*/ | head -1)
 cp -R "$INNER"Contents "$RES/jre/Contents"
 
 echo "[5/5] Info.plist + launcher + zip"
