@@ -50,6 +50,10 @@ Environment=JAVA_HOME=/opt/java21
 # Токен доступа: подключения без совпадающего ?token=... отклоняются.
 # Сгенерировать: openssl rand -hex 16. Без этой строки сервер пускает всех.
 Environment=SERTAS_TOKEN=ВАШ_ТОКЕН
+# TURN раздаётся клиентам ОТСЮДА (формат turn:HOST:3478,USER,PASS, см. раздел
+# TURN ниже). Без этой строки клиенты получат только STUN и между разными
+# NAT не соединятся (у обоих вечное «соединение…»).
+Environment=SERTAS_TURN=turn:ВАШ_IP:3478,sertas,ПАРОЛЬ
 ExecStart=/opt/sertas-signaling/bin/signaling-server 8080
 Restart=always
 RestartSec=3
@@ -134,7 +138,10 @@ CONF
 
 Открыть во внешнем фаерволе: `3478/udp`, `3478/tcp`, `49160-49200/udp`.
 
-Указать TURN в приложении (креды не в коде). Формат значения:
-`turn:HOST:3478,USER,PASS`. Источники (по приоритету): `-Dsertas.turn=...`, env
-`SERTAS_TURN`, файл `~/.sertas/turn`. В бандл вшивается через `SERTAS_TURN` при
-сборке (`scripts/package-windows.sh`).
+TURN задаётся **на сервере**: строка `Environment=SERTAS_TURN=turn:HOST:3478,USER,PASS`
+в юните сигналинга (см. выше) + `systemctl daemon-reload && systemctl restart
+sertas-signaling`. Сервер отдаёт его клиентам в `room-state` вместе со STUN, и
+клиент использует именно серверный список. Значение в бандле (`-Dsertas.turn`,
+env `SERTAS_TURN`, файл `~/.sertas/turn`; вшивается скриптами `package-*.sh`) —
+только запасной вариант на случай, когда сервер не прислал ничего; само по себе
+оно TURN не включает.
