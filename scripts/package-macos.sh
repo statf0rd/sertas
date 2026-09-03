@@ -70,12 +70,18 @@ PLIST
 
 TURN_LINE=""
 [ -n "$TURN_SPEC" ] && TURN_LINE="  -Dsertas.turn=\"$TURN_SPEC\" \\"
+# Звук демонстрации (ScreenCaptureKit) — включён в бандле по умолчанию;
+# SERTAS_DEMOAUDIO=off чтобы выключить. Без флага CallController.join не
+# создаёт ни audioEngine (отдача), ни demoPlayer (приём) — звук демо
+# не работает в обе стороны (зеркально package-windows.sh).
+DEMOAUDIO="${SERTAS_DEMOAUDIO:-on}"
 cat > "$APP/Contents/MacOS/sertas" <<LAUNCH
 #!/bin/bash
 HERE="\$(cd "\$(dirname "\$0")/../Resources" && pwd)"
 exec "\$HERE/jre/Contents/Home/bin/java" \\
   -Dsertas.server="$SERVER_URL" \\
   -Dsertas.audio.dylib="\$HERE/lib/libsertas_audio.dylib" \\
+  -Dsertas.demoaudio=$DEMOAUDIO \\
 $TURN_LINE
   -cp "\$HERE/lib/*" dev.sertas.app.Launcher
 LAUNCH
