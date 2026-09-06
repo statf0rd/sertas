@@ -20,8 +20,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Почему так: {@code CustomAudioSource.pushAudio} нужно звать с единственного
  * потока строго раз в 10мс (как в гайде webrtc-java). Тайтовый/бёрстовый push из
  * потока захвата ловит гонку в нативном {@code audio_send_stream}
- * ({@code RUNS_SERIALIZED}) → фатальный краш. В паузах досылаем тишину для ритма
- * (WASAPI loopback при цифровой тишине не отдаёт буферов).
+ * ({@code RUNS_SERIALIZED}) → фатальный краш. Что пушить на тике (данные /
+ * пропуск / тишина) решает {@link PushPacer}: тишина досылается только при
+ * длительном голоде источника, а не на каждом пустом тике — иначе за реальное
+ * время уходит больше 100 кадров/с и у зрителя слышен треск.
  *
  * <p>Звук демонстрации идёт мимо APM — стерео-музыкальный профиль навешивается
  * SDP-munging'ом по метке трека (см. {@code MeshCoordinator}).
@@ -33,6 +35,8 @@ public final class SystemAudioTrack implements PcmSink {
     private static final int CHANNELS = 2;
     private static final int BITS_PER_SAMPLE = 16;
     private static final int MAX_PENDING = 50; // ~500мс — защита от роста при бёрсте
+    private static final int PRIME_BLOCKS = 4;   // 40мс праймер — покрывает джиттер таймера Windows (15.6мс)
+    private static final int STARVED_TICKS = 50; // 500мс без данных → тишина для ритма
 
     private final CustomAudioSource source = new CustomAudioSource();
     private final AudioTrack track;
@@ -57,7 +61,8 @@ public final class SystemAudioTrack implements PcmSink {
     private volatile int framesPerBlock = 480;
 
     private SystemAudioProvider provider;
-    private long dbgPcm, dbgData, dbgSilence; // диагностика
+    private final PushPacer pacer = new PushPacer(PRIME_BLOCKS, STARVED_TICKS); // только поток push
+    private long dbgPcm, dbgData, dbgSilence, dbgSkip; // диагностика
 
     public SystemAudioTrack(WebRtcEngine engine) {
         this.track = engine.createAudioTrack(LABEL, source);
@@ -91,6 +96,7 @@ public final class SystemAudioTrack implements PcmSink {
         }
         pending.clear();
         pendingCount.set(0);
+        pacer.reset();
         track.setEnabled(false);
     }
 
@@ -115,10 +121,11 @@ public final class SystemAudioTrack implements PcmSink {
         }
     }
 
-    /** Единственный поток push: ровно один 10мс-кадр (данные или тишина) каждые 10мс. */
+    /** Единственный поток push: не больше одного 10мс-кадра за тик (см. {@link PushPacer}). */
     private void pushTick() {
         try {
-            Pcm10msReframer.Block b = pending.poll();
+            PushPacer.Action action = pacer.tick(pendingCount.get());
+            Pcm10msReframer.Block b = action == PushPacer.Action.DATA ? pending.poll() : null;
             byte[] pcm;
             int frames;
             if (b != null) {
@@ -126,14 +133,17 @@ public final class SystemAudioTrack implements PcmSink {
                 pcm = AudioFormatConverter.float32PlanarToS16Interleaved(b.left(), b.right());
                 frames = b.left().length;
                 dbgData++;
-            } else {
+            } else if (action == PushPacer.Action.SILENCE) {
                 frames = framesPerBlock;
                 pcm = AudioFormatConverter.silenceFrame(frames, CHANNELS);
                 dbgSilence++;
+            } else {
+                dbgSkip++;
+                return; // пустой тик — ничего не шлём, NetEq у зрителя скроет дырку
             }
             if ((dbgData + dbgSilence) % 500 == 1) {
                 System.err.println("[demo] push: data=" + dbgData + " silence=" + dbgSilence
-                        + " rate=" + sampleRate);
+                        + " skip=" + dbgSkip + " rate=" + sampleRate);
             }
             source.pushAudio(pcm, BITS_PER_SAMPLE, sampleRate, CHANNELS, frames);
         } catch (RuntimeException ignored) {

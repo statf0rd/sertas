@@ -5,6 +5,8 @@ import dev.onvoid.webrtc.PeerConnectionObserver;
 import dev.onvoid.webrtc.RTCConfiguration;
 import dev.onvoid.webrtc.RTCIceServer;
 import dev.onvoid.webrtc.RTCPeerConnection;
+import dev.onvoid.webrtc.media.MediaDevices;
+import dev.onvoid.webrtc.media.audio.AudioDevice;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModule;
 import dev.onvoid.webrtc.media.audio.AudioDeviceModuleBase;
 import dev.onvoid.webrtc.media.audio.AudioLayer;
@@ -17,6 +19,8 @@ import dev.onvoid.webrtc.media.video.VideoTrackSource;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -39,7 +43,52 @@ public final class WebRtcEngine {
      * На свежем потоке COM ещё не инициализирован, и webrtc выставляет MTA сам.
      */
     public WebRtcEngine() {
-        this(createOnInitThread(AudioDeviceModule::new));
+        this(createOnInitThread(() -> {
+            AudioDeviceModule adm = new AudioDeviceModule();
+            avoidCommunicationsRole(adm);
+            return adm;
+        }));
+    }
+
+    /**
+     * Windows: libwebrtc по умолчанию открывает микрофон и динамики через «устройство
+     * связи» (роль {@code eCommunications}). Такие потоки Windows считает
+     * «коммуникационными» и по настройке «Звук → Связь» приглушает все остальные
+     * звуки на 80% — у каждого участника, как только ADM стартует (вход первого
+     * пира). Выбираем те же устройства по умолчанию ЯВНО (по id из списка ADM):
+     * поток открывается без роли связи, и приглушения нет. Если устройство в списке
+     * не нашлось — ничего не меняем. {@code -Dsertas.audio.role=comm} — старое поведение.
+     * Только на потоке инициализации (COM в режиме MTA).
+     */
+    private static void avoidCommunicationsRole(AudioDeviceModuleBase adm) {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("win")
+                || "comm".equalsIgnoreCase(System.getProperty("sertas.audio.role", ""))) {
+            return;
+        }
+        try {
+            selectExplicitly(MediaDevices.getDefaultAudioCaptureDevice(), adm.getRecordingDevices(),
+                    adm::setRecordingDevice, "микрофон");
+            selectExplicitly(MediaDevices.getDefaultAudioRenderDevice(), adm.getPlayoutDevices(),
+                    adm::setPlayoutDevice, "динамики");
+        } catch (RuntimeException | UnsatisfiedLinkError e) {
+            System.err.println("[audio] явный выбор устройств не удался, остаётся устройство связи: " + e);
+        }
+    }
+
+    private static void selectExplicitly(AudioDevice def, List<AudioDevice> known,
+                                         Consumer<AudioDevice> select, String what) {
+        if (def == null) {
+            System.err.println("[audio] " + what + ": устройство по умолчанию не определено");
+            return;
+        }
+        for (AudioDevice d : known) {
+            if (Objects.equals(d.getDescriptor(), def.getDescriptor())) {
+                select.accept(d);
+                System.err.println("[audio] " + what + ": явно выбрано «" + d.getName() + "» (без роли связи)");
+                return;
+            }
+        }
+        System.err.println("[audio] " + what + ": «" + def.getName() + "» нет в списке ADM — остаётся устройство связи");
     }
 
     private WebRtcEngine(AudioDeviceModuleBase adm) {

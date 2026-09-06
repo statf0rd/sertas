@@ -28,8 +28,11 @@ import java.util.function.UnaryOperator;
  *   <li><b>out</b> — наш screen-audio трек → пиру. Живёт на движке
  *       {@link WebRtcEngine#pushOnly()}: у его ADM нет потока захвата, и единственный
  *       производитель кадров для {@code AudioSendStream} — наш push-поток.</li>
- *   <li><b>in</b> — трек пира → нам. Живёт на {@link WebRtcEngine#headless()}: его
- *       виртуальный playout гонит PCM в sink'и удалённых треков.</li>
+ *   <li><b>in</b> — трек пира → нам. Живёт на движке, чей ADM должен его играть: в
+ *       приложении — ГЛАВНЫЙ (реальный ADM: стерео, тактирование устройством,
+ *       AEC-референс), в тестах — {@link WebRtcEngine#headless()} (виртуальный
+ *       playout гонит PCM в sink'и). Отдающих потоков у in-сессии нет, так что
+ *       захват ADM ей не мешает.</li>
  * </ul>
  *
  * <p>Почему нельзя одним соединением на одном движке: любой ADM с потоком захвата
@@ -65,7 +68,7 @@ public final class ScreenAudioConnection {
 
     /**
      * @param sendEngine         движок отдачи ({@link WebRtcEngine#pushOnly()}); трек должен быть создан на нём
-     * @param recvEngine         движок приёма ({@link WebRtcEngine#headless()})
+     * @param recvEngine         движок приёма — тот, чей ADM играет трек (главный; в тестах headless)
      * @param channel            control data-channel главного соединения (транспорт сигналинга)
      * @param localTrack         локальный screen-audio трек (null у чистого зрителя)
      * @param onRemoteTrack      удалённый screen-audio трек прибыл (для воспроизведения)

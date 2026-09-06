@@ -8,7 +8,6 @@ import dev.onvoid.webrtc.media.audio.AudioTrack;
 import dev.onvoid.webrtc.media.video.VideoTrack;
 import dev.sertas.app.ui.ParticipantModel;
 import dev.sertas.app.ui.VideoTile;
-import dev.sertas.engine.JavaSoundDemoPlayer;
 import dev.sertas.engine.MacSystemAudioCapture;
 import dev.sertas.engine.MeshCoordinator;
 import dev.sertas.engine.MeshListener;
@@ -49,8 +48,10 @@ public final class CallController implements MeshListener {
     private final Set<String> wiredGains = new HashSet<>();               // (peerId:Kind) с навешанным слушателем; FX-поток
 
     /** Музыкальный профиль Opus для секции трека звука демо. */
-    private static final UnaryOperator<String> SCREEN_AUDIO_MUSIC =
-            sdp -> OpusSdpMunger.applyMusicProfileToTrack(sdp, SystemAudioTrack.LABEL);
+    // В сессиях звука демо ровно одна m=audio, поэтому мунжим весь SDP — и offer, и
+    // answer: стерео у Opus-энкодера отправителя включается только если stereo=1
+    // стоит в ОТВЕТЕ зрителя (answer по метке трека не найти — у recvonly нет msid).
+    private static final UnaryOperator<String> SCREEN_AUDIO_MUSIC = OpusSdpMunger::applyMusicProfile;
 
     private WebRtcEngine engine;
     private MeshCoordinator mesh;
@@ -59,14 +60,12 @@ public final class CallController implements MeshListener {
     private RemoteAudioMixer audioMixer;
     private ParticipantModel self;
 
-    // Звук демо — ДВА отдельных движка (отдача: pushOnly без потока захвата ADM,
-    // приём: headless с виртуальным playout), сигналинг поверх control data-channel
-    // главного соединения, воспроизведение у зрителя через javax.sound.
-    // См. ScreenAudioConnection / диагноз гонки в audio_send_stream.
-    private WebRtcEngine audioEngine;     // приём звука демо (headless: виртуальный playout)
+    // Звук демо: отдача — с отдельного движка pushOnly (ADM без потока захвата, см.
+    // диагноз гонки в ScreenAudioConnection), приём — на ГЛАВНОМ движке: его реальный
+    // ADM сам играет удалённый трек (стерео, тактируется устройством, попадает в
+    // AEC-референс микрофона). Сигналинг — поверх control data-channel главного соединения.
     private WebRtcEngine audioSendEngine; // отдача звука демо (pushOnly: ADM без захвата)
     private SystemAudioTrack screenAudio;
-    private JavaSoundDemoPlayer demoPlayer;
     private final Map<String, ScreenAudioConnection> screenAudioConns = new ConcurrentHashMap<>();
     private boolean micMuted = false;
     private volatile boolean sharing = false; // пишется из фонового потока старта показа
@@ -130,11 +129,9 @@ public final class CallController implements MeshListener {
         // RTC_CHECK_RUNS_SERIALIZED в audio_send_stream.cc (краш при включении
         // «Звук демонстрации»). Трек НЕ добавляем в главный меш.
         if ("on".equalsIgnoreCase(System.getProperty("sertas.demoaudio", "off"))) {
-            audioEngine = WebRtcEngine.headless();
             audioSendEngine = WebRtcEngine.pushOnly();
             screenAudio = new SystemAudioTrack(audioSendEngine);
-            demoPlayer = new JavaSoundDemoPlayer();
-            System.err.println("[demo] звук демо включён (send=pushOnly, recv=headless)");
+            System.err.println("[demo] звук демо включён (send=pushOnly, recv=главный движок)");
         }
 
         Platform.runLater(() -> {
@@ -255,10 +252,6 @@ public final class CallController implements MeshListener {
         screenAudioOn = false;
         screenAudioConns.values().forEach(ScreenAudioConnection::close);
         screenAudioConns.clear();
-        if (demoPlayer != null) {
-            demoPlayer.stop();
-            demoPlayer = null;
-        }
         if (mesh != null) {
             System.err.println("[life] leave STAGE=mesh.stop t=" + System.nanoTime());
             mesh.stop();
@@ -268,10 +261,6 @@ public final class CallController implements MeshListener {
             System.err.println("[life] leave STAGE=engine.dispose t=" + System.nanoTime());
             engine.dispose();
             engine = null;
-        }
-        if (audioEngine != null) {
-            audioEngine.dispose();
-            audioEngine = null;
         }
         if (audioSendEngine != null) {
             audioSendEngine.dispose();
@@ -347,32 +336,28 @@ public final class CallController implements MeshListener {
 
     @Override
     public void onControlChannel(String peerId, RTCDataChannel channel, boolean initiator) {
-        if (audioEngine == null || screenAudio == null) {
+        if (audioSendEngine == null || screenAudio == null || engine == null) {
             return; // звук демо выключен
         }
         System.err.println("[demo] onControlChannel peer=" + peerId + " initiator=" + initiator);
         ScreenAudioConnection conn = new ScreenAudioConnection(
-                audioSendEngine, audioEngine, channel, screenAudio.track(),
-                this::onRemoteScreenAudio, SCREEN_AUDIO_MUSIC);
+                audioSendEngine, engine, channel, screenAudio.track(),
+                t -> onRemoteScreenAudio(peerId, t), SCREEN_AUDIO_MUSIC);
         ScreenAudioConnection old = screenAudioConns.put(peerId, conn);
         if (old != null) {
             old.close();
         }
     }
 
-    /** Удалённый трек звука демо (на отдельном соединении) → воспроизведение через javax.sound. */
-    private void onRemoteScreenAudio(RTCRtpTransceiver transceiver) {
-        JavaSoundDemoPlayer player = demoPlayer;
-        if (player == null) {
-            return;
-        }
+    /**
+     * Удалённый трек звука демо (на отдельном соединении, но на главном движке):
+     * реальный ADM libwebrtc играет его сам. При включённом per-источниковом микшере
+     * (-Dsertas.mixer=on) подключаем к микшеру как вид DEMO, как и треки главного меша.
+     */
+    private void onRemoteScreenAudio(String peerId, RTCRtpTransceiver transceiver) {
         MediaStreamTrack track = transceiver.getReceiver().getTrack();
         if (track instanceof AudioTrack audio) {
-            audio.addSink((data, bitsPerSample, sampleRate, channels, frames) -> {
-                if (bitsPerSample == 16 && frames > 0) {
-                    player.offer(data, sampleRate, channels);
-                }
-            });
+            Platform.runLater(() -> attachRemoteAudio(peerId, audio));
         }
     }
 

@@ -101,3 +101,6 @@ chmod +x "$RES/jre/Contents/Home/bin/java" 2>/dev/null || true
 rm -f "$OUT"
 ( cd "$STAGE" && zip -q -r -y "$OUT" sertas.app )
 echo "done -> $OUT ($(du -h "$OUT" | cut -f1))"
+echo "ВАЖНО: при обновлении удалите старый sertas.app и распакуйте архив на его место."
+echo "Иначе Finder создаст копию «sertas 2.app», а разрешение Screen Recording выдано"
+echo "старому пути — macOS попросит доступ заново (бандл не подписан, TCC различает копии)."

@@ -154,8 +154,16 @@ void captureLoop(Capture* cap) {
                 UINT32 frames = 0;
                 DWORD flags = 0;
                 if (FAILED(capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) break;
-                if (frames > 0 && !(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data) {
-                    appendFrames(cap->ring, data, frames, channels, bits, isFloat);
+                if (frames > 0) {
+                    if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) || !data) {
+                        // Пакет цифровой тишины: кладём НУЛИ, а не пропускаем — иначе
+                        // таймлайн захвата сжимается, а push-поток на пустых тиках
+                        // досылает свою тишину не в такт → треск у зрителя.
+                        std::vector<float> z(frames, 0.0f);
+                        cap->ring.push(z.data(), z.data(), frames);
+                    } else {
+                        appendFrames(cap->ring, data, frames, channels, bits, isFloat);
+                    }
                 }
                 capture->ReleaseBuffer(frames);
                 if (FAILED(capture->GetNextPacketSize(&packet))) { packet = 0; break; }
