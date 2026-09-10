@@ -80,8 +80,8 @@ public final class VideoTile {
         return view;
     }
 
-    /** Нативный поток: конвертация кадра в BGRA. */
-    private void onFrame(VideoFrame frame) {
+    /** Нативный поток: конвертация кадра в BGRA. Package-private — вызывается тестом напрямую. */
+    void onFrame(VideoFrame frame) {
         try {
             int fw = frame.buffer.getWidth();
             int fh = frame.buffer.getHeight();
@@ -107,6 +107,17 @@ public final class VideoTile {
             }
         } catch (Exception ignored) {
             // битый/неподдержанный кадр — пропускаем
+        } finally {
+            // ОБЯЗАТЕЛЬНО: JNI-сторона webrtc-java копирует буфер и делает AddRef
+            // перед вызовом sink'а, так что владелец копии — мы. Без release
+            // каждый принятый кадр остаётся в нативной куче (1080p ≈ 3МБ, при
+            // 30 кадрах/с ≈ 90МБ/с — за минуты десятки гигабайт и своп; Java-куча
+            // при этом чистая, поэтому OutOfMemoryError не возникает).
+            try {
+                frame.release();
+            } catch (RuntimeException ignored) {
+                // нативный кадр уже освобождён — считать нечего
+            }
         }
     }
 
